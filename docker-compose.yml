@@ -33,10 +33,11 @@ services:
     volumes:
       - uploads_data:/data/uploads
     ports:
-      # Bind to localhost only — a reverse proxy (your existing one, or the
-      # bundled Caddy overlay) sits in front. APP_PORT is the host port; pick a
-      # free one (see README) since other tools may already use 8000.
-      - "127.0.0.1:${APP_PORT:-8000}:8000"
+      # BIND_HOST controls exposure:
+      #   127.0.0.1 (default) -> only a reverse proxy on the box can reach it
+      #   0.0.0.0             -> reachable directly at http://<server-ip>:APP_PORT
+      # APP_PORT is the host port; pick a free one (see README).
+      - "${BIND_HOST:-127.0.0.1}:${APP_PORT:-8000}:8000"
 
 volumes:
   db_data:
