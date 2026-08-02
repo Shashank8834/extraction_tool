@@ -88,10 +88,11 @@ function setupDinToggle() {
       document
         .querySelectorAll('.field[data-hide-if-din][data-section="' + section + '"]')
         .forEach(function (field) {
-          field.classList.toggle("din-hidden", hasDin);
-          field.querySelectorAll("input, textarea, select").forEach(function (inp) {
-            inp.disabled = hasDin; // disabled fields are not submitted / not required
-          });
+          // Keep the field visible & editable — a DIN only makes it optional,
+          // so just show/hide the required asterisk. The server enforces the
+          // same "optional when DIN present" rule.
+          var star = field.querySelector(".req");
+          if (star) star.style.display = hasDin ? "none" : "";
         });
     };
     din.addEventListener("input", apply);
