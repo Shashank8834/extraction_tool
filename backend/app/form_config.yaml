@@ -25,24 +25,21 @@ partner_template:
       extractor: pan
       required: true
       accept: "image/*,application/pdf"
-      hint: "We read your name, father's name, PAN number and date of birth."
     - key: aadhaar
       label: "Aadhaar Card"
       extractor: aadhaar
       required: true
       accept: "image/*,application/pdf"
-      hint: "We read your present address."
     - key: bank_statement
       label: "Latest Bank Statement"
       extractor: bank_statement
       required: false
       accept: "image/*,application/pdf"
-      hint: "We read your permanent address (best-effort; please verify)."
 
   fields:
     - {key: first_name,        label: "First Name",                          type: text,     required: true,  fill_from: pan}
     - {key: last_name,         label: "Last Name",                           type: text,     required: true,  fill_from: pan}
-    - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false, help: "If you already have a DIN, Permanent Address and Place of Birth are not required."}
+    - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false}
     - {key: father_first_name, label: "Father's First Name",                 type: text,     required: true,  fill_from: pan}
     - {key: father_last_name,  label: "Father's Last Name",                  type: text,     required: true,  fill_from: pan}
     - {key: present_address,   label: "Present Address",                     type: textarea, required: true,  fill_from: aadhaar}
@@ -68,12 +65,12 @@ sections:
     title: "Proposed LLP"
     position: top
     fields:
-      - {key: proposed_names, label: "Proposed LLP Names", type: textarea, required: true, help: "Give 3–4 names for the MCA name search."}
+      - {key: proposed_names, label: "Proposed LLP Names", type: textarea, required: true}
 
   - key: capital
     title: "Capital & Sharing"
     fields:
-      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true, help: "e.g. 10k, 25k. The main founder usually holds the majority (e.g. 99.99%)."}
+      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true}
       - {key: partner2_capital, label: "Second Partner — Capital Contribution", type: text, required: true}
       - {key: partner1_profit,  label: "First Partner — Profit/Loss Share (%)",  type: text, required: true}
       - {key: partner2_profit,  label: "Second Partner — Profit/Loss Share (%)", type: text, required: true}
@@ -86,11 +83,10 @@ sections:
         extractor: utility_bill
         required: true
         accept: "image/*,application/pdf"
-        hint: "We read the office address and the name on the bill (best-effort; please verify)."
     fields:
       - {key: office_address,  label: "Registered Office Address",           type: textarea, required: true, fill_from: utility_bill}
       - {key: utility_name,    label: "Property Owner / Name on the Bill",   type: text,     required: true, fill_from: utility_bill}
-      - {key: lat_long,        label: "Latitude & Longitude of the Office",  type: text,     required: true, help: "e.g. 17.3850, 78.4867"}
+      - {key: lat_long,        label: "Latitude & Longitude of the Office",  type: text,     required: true}
       - {key: police_station,  label: "Nearby Police Station",              type: text,     required: true}
 
   - key: llp_details
