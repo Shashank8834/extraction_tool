@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Submission — {{ link.label or link.id }}{% endblock %}
+{% block body %}
+  <div class="topbar">
+    <h1>Submission</h1>
+    <a class="link" href="/admin">← Back to dashboard</a>
+  </div>
+
+  <div class="card">
+    <h2>{{ link.label or "Unlabelled" }}</h2>
+    <p class="muted">
+      Submitted {{ submission.submitted_at.strftime("%Y-%m-%d %H:%M") }} UTC
+      {% if submission.client_ip %} · from {{ submission.client_ip }}{% endif %}
+    </p>
+  </div>
+
+  {% for section in form.sections %}
+    <div class="card section">
+      <h2>{{ section.title }}</h2>
+
+      {# uploaded documents for this section #}
+      {% for up in section.uploads %}
+        {% set upload = uploads_by_slot.get(up.name) %}
+        <div class="doc-block">
+          <div class="topbar">
+            <h3 class="doc-title">{{ up.label }}
+              <span class="badge doc">{{ up.extractor }}</span>
+            </h3>
+            {% if upload %}
+              <a class="btn small" href="/admin/files/{{ upload.id }}" target="_blank" rel="noopener">Open file</a>
+            {% endif %}
+          </div>
+          {% if upload %}
+            <p class="muted tiny">{{ upload.original_filename }} · {{ (upload.size_bytes or 0) // 1024 }} KB</p>
+            {% if upload.extracted_data %}
+              <table class="kv">
+                {% for key, value in upload.extracted_data.items() %}
+                  <tr><th>{{ key.replace("_", " ").title() }}</th><td>{{ value }}</td></tr>
+                {% endfor %}
+              </table>
+            {% else %}
+              <p class="muted tiny">Nothing auto-extracted.</p>
+            {% endif %}
+            <details>
+              <summary>Raw OCR text</summary>
+              <pre class="raw">{{ upload.raw_text or "(none)" }}</pre>
+            </details>
+          {% else %}
+            <p class="muted tiny">Not uploaded.</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      {# submitted field values for this section #}
+      {% if section.fields %}
+        <table class="kv">
+          {% for field in section.fields %}
+            {% set value = submission.form_data.get(field.name) %}
+            <tr>
+              <th>{{ field.label }}</th>
+              <td>{{ value if value else "—" }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endblock %}

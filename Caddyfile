@@ -1,0 +1,6 @@
+# Production reverse proxy with automatic HTTPS (Let's Encrypt).
+# SITE_ADDRESS comes from .env (e.g. intake.yourdomain.com).
+{$SITE_ADDRESS} {
+    encode gzip
+    reverse_proxy app:8000
+}

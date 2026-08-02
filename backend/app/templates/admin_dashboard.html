@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+  <div class="topbar">
+    <h1>Intake Dashboard</h1>
+    <a class="link" href="/admin/logout">Log out</a>
+  </div>
+
+  <div class="card">
+    <h2>Create a new intake link</h2>
+    <form method="post" action="/admin/links" class="inline-form">
+      <input type="text" name="label" placeholder="Client name / reference (optional)">
+      <input type="number" name="expiry_days" min="0" class="expiry-input"
+             value="{{ default_expiry_days }}" title="Days until the link expires (0 = never)">
+      <button type="submit" class="btn">Generate link</button>
+    </form>
+    <p class="muted small-note">Expires after this many days (0 = never). Default: {{ default_expiry_days }}.</p>
+  </div>
+
+  <div class="card">
+    <h2>Links</h2>
+    {% if not links %}
+      <p class="muted">No links yet. Create one above.</p>
+    {% else %}
+      <table>
+        <thead>
+          <tr><th>Label</th><th>Status</th><th>Created</th><th>Expires</th><th>Link</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for link in links %}
+            {% set state = link.effective_status %}
+            <tr>
+              <td>{{ link.label or "—" }}</td>
+              <td>
+                <span class="badge {{ {'completed': 'done', 'expired': 'expired'}.get(state, 'pending') }}">
+                  {{ state }}
+                </span>
+              </td>
+              <td class="muted">{{ link.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td class="muted">
+                {{ link.expires_at.strftime("%Y-%m-%d %H:%M") if link.expires_at else "never" }}
+              </td>
+              <td>
+                <input class="link-input" readonly value="{{ base_url }}/f/{{ link.token }}">
+              </td>
+              <td>
+                {% if state == "completed" %}
+                  <a class="btn small" href="/admin/submissions/{{ link.id }}">View</a>
+                {% elif state == "expired" %}
+                  <span class="muted">expired</span>
+                {% else %}
+                  <span class="muted">awaiting</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+{% endblock %}

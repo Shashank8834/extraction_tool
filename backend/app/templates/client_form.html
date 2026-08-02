@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+
+{% macro render_field(field, values) %}
+  {% set name = field.name %}
+  {% set val = values.get(name, field.get("default", "")) %}
+  <div class="field"
+       data-field="{{ name }}"
+       data-section="{{ name.split('__')[0] }}"
+       {% if field.hide_if_din %}data-hide-if-din="1"{% endif %}>
+    <label for="{{ name }}">
+      {{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
+    </label>
+    {% if field.type == "textarea" %}
+      <textarea id="{{ name }}" name="{{ name }}" rows="3"
+                placeholder="{{ field.get('placeholder', '') }}">{{ val }}</textarea>
+    {% elif field.type == "select" %}
+      <select id="{{ name }}" name="{{ name }}">
+        {% for opt in field.get("options", []) %}
+          <option value="{{ opt }}" {% if val == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    {% else %}
+      <input type="{{ field.type }}" id="{{ name }}" name="{{ name }}" value="{{ val }}"
+             placeholder="{{ field.get('placeholder', '') }}">
+    {% endif %}
+    {% if field.get("help") %}<div class="help">{{ field.help }}</div>{% endif %}
+    {% if field.fill_from %}<div class="autofill-note" data-for="{{ name }}"></div>{% endif %}
+    {% if errors and errors.get(name) %}<div class="field-error">{{ errors[name] }}</div>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block body %}
+  <div class="page-head">
+    <h1>{{ form.title }}</h1>
+    {% if form.description %}<p class="muted">{{ form.description }}</p>{% endif %}
+  </div>
+
+  {% if errors %}
+    <div class="alert error">
+      {{ errors.get("__all__", "Please fix the highlighted fields below.") }}
+    </div>
+  {% endif %}
+
+  <form id="intake-form" method="post" action="/f/{{ token }}"
+        enctype="multipart/form-data" data-extract-url="/f/{{ token }}/extract" novalidate>
+
+    {% for section in form.sections %}
+      <section class="card section">
+        <h2>{{ section.title }}</h2>
+
+        {% if section.uploads %}
+          <div class="uploads">
+            {% for up in section.uploads %}
+              <div class="upload" data-upload="{{ up.name }}">
+                <label for="{{ up.name }}">
+                  {{ up.label }}{% if up.required %} <span class="req">*</span>{% endif %}
+                </label>
+                <input type="file" id="{{ up.name }}" name="{{ up.name }}"
+                       accept="{{ up.accept }}" data-slot="{{ up.name }}">
+                {% if up.get("hint") %}<div class="help">{{ up.hint }}</div>{% endif %}
+                <div class="upload-status" data-status="{{ up.name }}"></div>
+                {% if errors and errors.get(up.name) %}
+                  <div class="field-error">{{ errors[up.name] }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% for field in section.fields %}
+          {{ render_field(field, values) }}
+        {% endfor %}
+      </section>
+    {% endfor %}
+
+    <button type="submit" class="btn btn-lg">Submit details</button>
+  </form>
+
+  <p class="footer-note">Your information is encrypted and shared only with the recipient.</p>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Link unavailable{% endblock %}
+{% block body %}
+  <div class="card center">
+    <div class="big-check muted">•</div>
+    {% if state == "completed" %}
+      <h1>Already submitted</h1>
+      <p class="muted">This link has already been used. If you need to make changes, please contact us.</p>
+    {% elif state == "expired" %}
+      <h1>Link expired</h1>
+      <p class="muted">This link is no longer valid. Please request a new one.</p>
+    {% else %}
+      <h1>Invalid link</h1>
+      <p class="muted">This link doesn't exist. Please check the URL or request a new one.</p>
+    {% endif %}
+  </div>
+{% endblock %}
