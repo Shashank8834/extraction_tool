@@ -7,12 +7,13 @@ here with a callable that takes raw OCR text (or, if you prefer image input,
 change `extract` to hand the model the bytes) and returns the same field dict.
 """
 import io
+import json
 
 import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image, ImageOps
 
-from . import parsers
+from . import llm, parsers
 
 # doc type -> function(raw_text) -> {field_key: value}
 EXTRACTORS = {
@@ -43,8 +44,21 @@ def run_ocr(file_bytes: bytes, content_type: str | None) -> str:
 
 
 def extract(extractor_name: str, file_bytes: bytes, content_type: str | None) -> tuple[str, dict]:
-    """Return (raw_text, extracted_fields). Never raises — OCR failures return
-    empty results so a submission/autofill is never lost."""
+    """Return (raw_text, extracted_fields). Never raises — failures return empty
+    results so a submission/autofill is never lost.
+
+    Uses the vision LLM (Gemini) when configured, falling back to Tesseract."""
+    # 1. Vision LLM, if enabled
+    if llm.is_enabled():
+        try:
+            fields = llm.extract_with_gemini(extractor_name, file_bytes, content_type)
+            if fields:
+                summary = "[read by Gemini vision]\n" + json.dumps(fields, ensure_ascii=False, indent=2)
+                return summary, fields
+        except Exception:  # noqa: BLE001 - fall back to Tesseract
+            pass
+
+    # 2. Tesseract fallback
     try:
         raw_text = run_ocr(file_bytes, content_type)
     except Exception as exc:  # noqa: BLE001 - OCR must be non-fatal

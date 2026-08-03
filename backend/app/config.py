@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     max_upload_mb: int = 15
     link_expiry_days: int = 7  # default lifetime of an intake link (0 = never expires)
 
+    # --- Optional LLM extraction (falls back to Tesseract if unset/failed) ---
+    llm_provider: str = ""  # "" disables; "gemini" enables Google Gemini vision
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     upload_dir: str = "/data/uploads"
 
 

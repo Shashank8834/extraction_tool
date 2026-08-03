@@ -30,6 +30,9 @@ services:
       BASE_URL: ${BASE_URL}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
       LINK_EXPIRY_DAYS: ${LINK_EXPIRY_DAYS:-7}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
     volumes:
       - uploads_data:/data/uploads
     ports:
