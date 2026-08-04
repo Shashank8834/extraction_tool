@@ -10,7 +10,7 @@ from ..config_loader import get_form_config
 from ..database import get_db
 from ..models import Submission, SubmissionLink, Upload
 from ..security import is_inline_safe, sanitize_filename, verify_admin
-from ..storage import load_decrypted
+from ..storage import delete_file, load_decrypted
 from ..templating import templates
 
 router = APIRouter(prefix="/admin")
@@ -91,6 +91,31 @@ def create_link(
 
     link = SubmissionLink(label=label.strip(), expires_at=expires_at)
     db.add(link)
+    db.commit()
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/links/{link_id}/delete")
+def delete_link(link_id: str, request: Request, db: Session = Depends(get_db)):
+    """Permanently remove a link, and with it any submission and uploaded
+    documents. Intended for links created by mistake; POST-only so a link
+    can't be deleted by a stray GET (prefetch, crawler, pasted URL)."""
+    redirect = _require_auth(request)
+    if redirect:
+        return redirect
+
+    link = db.query(SubmissionLink).filter(SubmissionLink.id == link_id).first()
+    if link is None:
+        return RedirectResponse("/admin", status_code=303)
+
+    # Delete the encrypted blobs before the rows: the DB rows are the only
+    # record of which files on disk belong to this link, so dropping them first
+    # would strand the blobs in the upload volume forever.
+    if link.submission is not None:
+        for upload in link.submission.uploads:
+            delete_file(upload.stored_filename)
+
+    db.delete(link)  # cascades to the submission and its upload rows
     db.commit()
     return RedirectResponse("/admin", status_code=303)
 

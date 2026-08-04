@@ -19,3 +19,12 @@ def load_decrypted(stored_filename: str) -> bytes:
     path = os.path.join(settings.upload_dir, stored_filename)
     with open(path, "rb") as fh:
         return decrypt_bytes(fh.read())
+
+
+def delete_file(stored_filename: str) -> None:
+    """Remove a stored blob. Missing files are ignored — a delete must not fail
+    just because the blob is already gone."""
+    try:
+        os.remove(os.path.join(settings.upload_dir, stored_filename))
+    except FileNotFoundError:
+        pass

@@ -3,14 +3,25 @@
 //      endpoint, then fill the fields it returns (client can still edit them).
 //   2. DIN logic — if a partner enters a DIN, hide + un-require the fields
 //      marked hide_if_din (Permanent Address, Place of Birth) for that partner.
-//   3. Admin: click-to-select the intake link.
+//   3. Admin: click-to-select the intake link, confirm destructive actions.
 // Kept external (not inline) to satisfy the Content-Security-Policy.
 
 document.addEventListener("DOMContentLoaded", function () {
   setupLinkInputs();
   setupAutofill();
   setupDinToggle();
+  setupConfirmForms();
 });
+
+// --- confirm before destructive submits -------------------------------------
+// CSP forbids inline handlers, so the prompt text rides on data-confirm.
+function setupConfirmForms() {
+  document.querySelectorAll("form[data-confirm]").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(form.getAttribute("data-confirm"))) event.preventDefault();
+    });
+  });
+}
 
 // --- admin: select intake link on focus/click -------------------------------
 function setupLinkInputs() {

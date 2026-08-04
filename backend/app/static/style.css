@@ -135,6 +135,14 @@ input[type="file"]::file-selector-button:hover { opacity: 0.82; }
 .btn.small { padding: 7px 14px; font-size: 0.83rem; }
 .btn.ghost { background: transparent; color: var(--ink); border-color: #d6d6d6; box-shadow: none; }
 .btn.ghost:hover { background: var(--surface-2); border-color: var(--line-strong); }
+/* Destructive: recedes until hovered, then goes solid. Weight, not colour,
+   marks it as dangerous — consistent with the greyscale-only rule above. */
+.btn.ghost.danger { color: var(--muted); }
+.btn.ghost.danger:hover { background: var(--ink); color: var(--accent-ink); border-color: var(--ink); }
+
+/* table row actions: keep View and Delete on one line, right-aligned */
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.inline-action { display: inline; margin: 0; }
 
 .link { color: var(--ink); text-decoration: none; font-weight: 600; border-bottom: 1px solid var(--line); transition: border-color 0.18s var(--ease); }
 .link:hover { border-color: var(--line-strong); }

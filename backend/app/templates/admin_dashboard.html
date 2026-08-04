@@ -44,13 +44,19 @@
                 <input class="link-input" readonly value="{{ base_url }}/f/{{ link.token }}">
               </td>
               <td>
-                {% if state == "completed" %}
-                  <a class="btn small" href="/admin/submissions/{{ link.id }}">View</a>
-                {% elif state == "expired" %}
-                  <span class="muted">expired</span>
-                {% else %}
-                  <span class="muted">awaiting</span>
-                {% endif %}
+                <div class="row-actions">
+                  {% if state == "completed" %}
+                    <a class="btn small" href="/admin/submissions/{{ link.id }}">View</a>
+                  {% elif state == "expired" %}
+                    <span class="muted">expired</span>
+                  {% else %}
+                    <span class="muted">awaiting</span>
+                  {% endif %}
+                  <form method="post" action="/admin/links/{{ link.id }}/delete" class="inline-action"
+                        data-confirm="Delete the link for {{ link.label or 'this client' }}?{% if link.submission %} Their submitted details and uploaded documents will be permanently deleted too. This cannot be undone.{% endif %}">
+                    <button type="submit" class="btn small ghost danger">Delete</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
