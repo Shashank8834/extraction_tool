@@ -9,12 +9,15 @@ returns nothing, the caller falls back to Tesseract.
 import base64
 import io
 import json
+import logging
 
 import httpx
 from pdf2image import convert_from_bytes
 from PIL import Image
 
 from ..config import settings
+
+log = logging.getLogger(__name__)
 
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -91,7 +94,21 @@ def extract_with_gemini(extractor_name: str, file_bytes: bytes, content_type: st
     resp.raise_for_status()
     payload = resp.json()
 
-    text = payload["candidates"][0]["content"]["parts"][0]["text"]
+    candidate = payload["candidates"][0]
+    text = candidate["content"]["parts"][0]["text"]
     data = json.loads(text)
     # keep only non-empty string values
-    return {k: v.strip() for k, v in data.items() if isinstance(v, str) and v.strip()}
+    fields = {k: v.strip() for k, v in data.items() if isinstance(v, str) and v.strip()}
+
+    if not fields:
+        # Distinguish "model read the doc but the field isn't on it" (e.g. the
+        # front of an Aadhaar card carries no address) from a truncated or
+        # blocked response. Log shapes only — never the values, which are PII.
+        log.warning(
+            "Gemini returned no usable fields for %s: keys=%s finish_reason=%s images=%d",
+            extractor_name,
+            {k: (len(v) if isinstance(v, str) else type(v).__name__) for k, v in data.items()},
+            candidate.get("finishReason"),
+            len(parts) - 1,
+        )
+    return fields
