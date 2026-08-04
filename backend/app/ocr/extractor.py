@@ -8,12 +8,16 @@ change `extract` to hand the model the bytes) and returns the same field dict.
 """
 import io
 import json
+import logging
 
+import httpx
 import pytesseract
 from pdf2image import convert_from_bytes
 from PIL import Image, ImageOps
 
 from . import llm, parsers
+
+log = logging.getLogger(__name__)
 
 # doc type -> function(raw_text) -> {field_key: value}
 EXTRACTORS = {
@@ -55,8 +59,16 @@ def extract(extractor_name: str, file_bytes: bytes, content_type: str | None) ->
             if fields:
                 summary = "[read by Gemini vision]\n" + json.dumps(fields, ensure_ascii=False, indent=2)
                 return summary, fields
-        except Exception:  # noqa: BLE001 - fall back to Tesseract
-            pass
+            log.warning("Gemini returned no fields for %s; falling back to Tesseract", extractor_name)
+        except httpx.HTTPStatusError as exc:  # noqa: PERF203 - each branch logs differently
+            # Surface the API's own message (bad key, quota, unknown model) — without
+            # it, an API failure is indistinguishable from "no key configured".
+            log.warning(
+                "Gemini HTTP %s for %s: %s",
+                exc.response.status_code, extractor_name, exc.response.text[:300],
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to Tesseract
+            log.warning("Gemini extraction failed for %s: %r", extractor_name, exc)
 
     # 2. Tesseract fallback
     try:

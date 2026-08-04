@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # --- Optional LLM extraction (falls back to Tesseract if unset/failed) ---
     llm_provider: str = ""  # "" disables; "gemini" enables Google Gemini vision
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     upload_dir: str = "/data/uploads"
 
