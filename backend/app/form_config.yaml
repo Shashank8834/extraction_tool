@@ -9,9 +9,14 @@
 # Field keys used by `fill_from` MUST match an extractor output key:
 #   pan            -> first_name, last_name, father_first_name,
 #                     father_last_name, pan_number, dob
-#   aadhaar        -> present_address
+#   aadhaar        -> first_name, last_name, dob, present_address
 #   bank_statement -> permanent_address
 #   utility_bill   -> office_address, utility_name
+#
+# `fill_from` takes one key or a list. With a list, whichever document the
+# client uploads first supplies the value — a later upload never overwrites a
+# field that already has something in it, so nothing the client typed is lost.
+# Anything no document could supply is simply left for the client to type.
 # ===========================================================================
 
 title: "LLP Incorporation — Client Details"
@@ -37,8 +42,8 @@ partner_template:
       accept: "image/*,application/pdf"
 
   fields:
-    - {key: first_name,        label: "First Name",                          type: text,     required: true,  fill_from: pan}
-    - {key: last_name,         label: "Last Name",                           type: text,     required: true,  fill_from: pan}
+    - {key: first_name,        label: "First Name",                          type: text,     required: true,  fill_from: [pan, aadhaar]}
+    - {key: last_name,         label: "Last Name",                           type: text,     required: true,  fill_from: [pan, aadhaar]}
     - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false}
     - {key: father_first_name, label: "Father's First Name",                 type: text,     required: true,  fill_from: pan}
     - {key: father_last_name,  label: "Father's Last Name",                  type: text,     required: true,  fill_from: pan}
@@ -48,7 +53,7 @@ partner_template:
     - {key: email,             label: "Email ID",                            type: email,    required: true}
     - {key: occupation,        label: "Occupation",                          type: text,     required: true}
     - {key: pan_number,        label: "Income Tax PAN",                      type: text,     required: true,  fill_from: pan}
-    - {key: dob,               label: "Date of Birth",                       type: text,     required: true,  fill_from: pan, placeholder: "DD/MM/YYYY"}
+    - {key: dob,               label: "Date of Birth",                       type: text,     required: true,  fill_from: [pan, aadhaar], placeholder: "DD/MM/YYYY"}
     - {key: nationality,       label: "Nationality",                         type: text,     required: true,  default: "Indian"}
     - {key: partner_elsewhere, label: "Are you a Director/Partner in any other company/LLP?", type: select, required: true, options: ["No", "Yes"]}
     - {key: place_of_birth,    label: "Place of Birth (District & State)",   type: text,     required: true,  hide_if_din: true}

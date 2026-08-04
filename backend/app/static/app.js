@@ -58,12 +58,16 @@ function setupAutofill() {
             setStatus(status, "warn", (res.body && res.body.error) || "Could not read this file.");
             return;
           }
-          var fields = res.body.fields || {};
-          var count = fillFields(slot, fields);
-          if (count > 0) {
-            setStatus(status, "ok", "Read " + count + " field" + (count === 1 ? "" : "s") + " — please review.");
+          var r = fillFields(slot, res.body.fields || {});
+          if (r.filled > 0) {
+            setStatus(status, "ok",
+              "Read " + r.filled + " field" + (r.filled === 1 ? "" : "s") +
+              " — please review, and fill in anything still blank.");
+          } else if (r.skipped > 0) {
+            // Everything this document offered was already on the form.
+            setStatus(status, "ok", "Nothing new to fill — the details are already in.");
           } else if (res.body.had_text) {
-            setStatus(status, "warn", "Couldn't auto-read the details — please type them in.");
+            setStatus(status, "warn", "Couldn't auto-read this one — please type the details in.");
           } else {
             setStatus(status, "warn", "No readable text found — please type the details in.");
           }
@@ -75,19 +79,25 @@ function setupAutofill() {
   });
 }
 
+// Fills what it can and leaves the rest to the client. Returns how many fields
+// were written vs. left alone because they already had a value.
 function fillFields(slot, fields) {
-  var n = 0;
+  var filled = 0, skipped = 0;
   Object.keys(fields).forEach(function (name) {
     var el = document.querySelector('[name="' + cssEscape(name) + '"]');
     if (!el) return;
+    // First value in wins. A second document must never overwrite a correction
+    // the client just typed, and two documents can disagree (a name may be
+    // spelled differently on a PAN card and an Aadhaar card).
+    if (el.value.trim() !== "") { skipped++; return; }
     el.value = fields[name];
     el.classList.add("autofilled");
     flash(el);
     var note = document.querySelector('.autofill-note[data-for="' + cssEscape(name) + '"]');
     if (note) note.textContent = "✓ auto-filled from your upload · edit if needed";
-    n++;
+    filled++;
   });
-  return n;
+  return { filled: filled, skipped: skipped };
 }
 
 // --- DIN show/hide ----------------------------------------------------------

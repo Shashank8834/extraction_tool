@@ -20,6 +20,16 @@ def _qualify(section_key: str, key: str) -> str:
     return f"{section_key}__{key}"
 
 
+def _fill_sources(field: dict) -> list[str]:
+    """Upload keys that can fill this field. `fill_from` accepts a single key or
+    a list — a name or DOB, for instance, is readable from both the PAN card and
+    the Aadhaar card, so whichever the client uploads first can supply it."""
+    src = field.get("fill_from")
+    if not src:
+        return []
+    return [src] if isinstance(src, str) else list(src)
+
+
 def _build_section(section_key: str, title: str, raw: dict) -> dict:
     fields = []
     for f in raw.get("fields", []) or []:
@@ -32,7 +42,7 @@ def _build_section(section_key: str, title: str, raw: dict) -> dict:
         u = dict(u)
         u["name"] = _qualify(section_key, u["key"])
         # fields in this section that this upload fills once extracted
-        u["fills"] = [f["name"] for f in fields if f.get("fill_from") == u["key"]]
+        u["fills"] = [f["name"] for f in fields if u["key"] in _fill_sources(f)]
         uploads.append(u)
 
     return {"key": section_key, "title": title, "fields": fields, "uploads": uploads}

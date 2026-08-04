@@ -30,10 +30,17 @@ _PROMPTS = {
         "Split each person's full name into first name (first word) and last name (the rest). "
         "dob must be DD/MM/YYYY. Use an empty string for anything not present."
     ),
+    # The front of an Aadhaar card carries the name and DOB but no address (that
+    # is on the back), so ask for every field either side might show and let the
+    # caller fill whatever came back.
     "aadhaar": (
-        "This is an Indian Aadhaar card. Return ONLY JSON: "
-        '{"present_address":""} containing the full postal address printed on the card '
-        "(include PIN code). Empty string if not visible."
+        "This is an Indian Aadhaar card — it may show the front, the back, or both. "
+        "Return ONLY JSON with these keys: "
+        '{"first_name":"","last_name":"","dob":"","present_address":""}. '
+        "Split the holder's full name into first name (first word) and last name (the rest). "
+        "dob must be DD/MM/YYYY. present_address is the full postal address including PIN "
+        "code, which is printed on the back — return an empty string if only the front is "
+        "shown. Use an empty string for anything not visible; do not guess."
     ),
     "bank_statement": (
         "This is a bank statement. Return ONLY JSON: "
