@@ -12,6 +12,12 @@
       Submitted {{ submission.submitted_at.strftime("%Y-%m-%d %H:%M") }} UTC
       {% if submission.client_ip %} · from {{ submission.client_ip }}{% endif %}
     </p>
+    <div class="row-actions export-actions">
+      <a class="btn small" href="/admin/submissions/{{ link.id }}/excel">Download Excel</a>
+      <a class="btn small ghost" href="/admin/submissions/{{ link.id }}/attachments.zip">
+        Download all documents ({{ submission.uploads | length }})
+      </a>
+    </div>
   </div>
 
   {% for section in form.sections %}

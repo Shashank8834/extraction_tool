@@ -4,10 +4,14 @@
 {% macro render_field(field, values) %}
   {% set name = field.name %}
   {% set val = values.get(name, field.get("default", "")) %}
-  <div class="field"
+  {# a show_if field starts hidden unless its controlling field already matches
+     (it will, when the form re-renders with validation errors) #}
+  <div class="field{% if field.show_if_name and values.get(field.show_if_name) != field.show_if_value %} is-hidden{% endif %}"
        data-field="{{ name }}"
        data-section="{{ name.split('__')[0] }}"
-       {% if field.hide_if_din %}data-hide-if-din="1"{% endif %}>
+       {% if field.hide_if_din %}data-hide-if-din="1"{% endif %}
+       {% if field.show_if_name %}data-show-if="{{ field.show_if_name }}"
+                                  data-show-if-value="{{ field.show_if_value }}"{% endif %}>
     <label for="{{ name }}">
       {{ field.label }}{% if field.required %} <span class="req">*</span>{% endif %}
     </label>
@@ -17,7 +21,7 @@
     {% elif field.type == "select" %}
       <select id="{{ name }}" name="{{ name }}">
         {% for opt in field.get("options", []) %}
-          <option value="{{ opt }}" {% if val == opt %}selected{% endif %}>{{ opt }}</option>
+          <option value="{{ opt }}" {% if val == opt %}selected{% endif %}>{{ opt or "— Select —" }}</option>
         {% endfor %}
       </select>
     {% else %}
@@ -31,9 +35,42 @@
 {% endmacro %}
 
 {% block body %}
+  {% set brand = form.brand %}
+  {% if brand.name %}
+    <header class="brandbar">
+      <a class="brandmark" href="{{ brand.url }}" target="_blank" rel="noopener noreferrer">
+        {% if brand.logo %}
+          <img src="{{ brand.logo }}" alt="{{ brand.name }}" class="brand-logo">
+        {% else %}
+          <span class="brand-wordmark">{{ brand.name }}</span>
+        {% endif %}
+      </a>
+      {% if brand.tagline %}<span class="brand-tagline">{{ brand.tagline }}</span>{% endif %}
+    </header>
+  {% endif %}
+
   <div class="page-head">
     <h1>{{ form.title }}</h1>
     {% if form.description %}<p class="muted">{{ form.description }}</p>{% endif %}
+  </div>
+
+  <div class="trust-note">
+    <h2>Your documents are safe here</h2>
+    <ul>
+      <li>Every file you upload is <strong>encrypted before it is stored</strong>, and only
+        {{ brand.name or "we" }} can open it.</li>
+      <li>This link is private to you, works once, and expires on its own.</li>
+      <li>We ask for these documents only to complete your LLP incorporation with the MCA —
+        nothing here is shared with anyone else or used for marketing.</li>
+      <li>Each field below says what it is for. Where it is a legal requirement, we have said so.</li>
+    </ul>
+    {% if brand.url %}
+      <p class="trust-foot">
+        A service of
+        <a href="{{ brand.url }}" target="_blank" rel="noopener noreferrer">{{ brand.name }}</a>.
+        If anything looks wrong, contact us before uploading.
+      </p>
+    {% endif %}
   </div>
 
   {% if errors %}
@@ -48,6 +85,7 @@
     {% for section in form.sections %}
       <section class="card section">
         <h2>{{ section.title }}</h2>
+        {% if section.note %}<p class="section-note">{{ section.note }}</p>{% endif %}
 
         {% if section.uploads %}
           <div class="uploads">

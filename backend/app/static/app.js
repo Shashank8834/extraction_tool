@@ -10,8 +10,29 @@ document.addEventListener("DOMContentLoaded", function () {
   setupLinkInputs();
   setupAutofill();
   setupDinToggle();
+  setupShowIf();
   setupConfirmForms();
 });
+
+// --- conditional fields (e.g. "specify your qualification" when Other) ------
+function setupShowIf() {
+  document.querySelectorAll(".field[data-show-if]").forEach(function (field) {
+    var ctrl = document.querySelector('[name="' + cssEscape(field.getAttribute("data-show-if")) + '"]');
+    if (!ctrl) return;
+    var want = field.getAttribute("data-show-if-value");
+    var input = field.querySelector("input, select, textarea");
+    var apply = function () {
+      var show = ctrl.value === want;
+      field.classList.toggle("is-hidden", !show);
+      // Clear on hide so a stale answer can never be submitted. The server
+      // blanks it too — this just keeps the form honest as the client types.
+      if (!show && input) input.value = "";
+    };
+    ctrl.addEventListener("change", apply);
+    ctrl.addEventListener("input", apply);
+    apply();
+  });
+}
 
 // --- confirm before destructive submits -------------------------------------
 // CSP forbids inline handlers, so the prompt text rides on data-confirm.

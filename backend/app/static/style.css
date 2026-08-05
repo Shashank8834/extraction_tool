@@ -142,6 +142,7 @@ input[type="file"]::file-selector-button:hover { opacity: 0.82; }
 
 /* table row actions: keep View and Delete on one line, right-aligned */
 .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.export-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 14px; }
 .inline-action { display: inline; margin: 0; }
 
 .link { color: var(--ink); text-decoration: none; font-weight: 600; border-bottom: 1px solid var(--line); transition: border-color 0.18s var(--ease); }
@@ -239,6 +240,53 @@ details[open] summary { margin-bottom: 10px; }
   margin-bottom: 18px;
   border-bottom: 1px solid var(--line);
 }
+
+/* a short "what this is for" line under a section heading */
+.section-note {
+  margin: -8px 0 18px;
+  color: var(--muted);
+  font-size: 0.87rem;
+}
+
+/* conditional fields (shown only when a controlling answer matches) */
+.is-hidden { display: none !important; }
+
+/* --- brand bar + data-safety notice on the client form --- */
+.brandbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.brandmark { text-decoration: none; display: inline-flex; align-items: center; }
+.brand-logo { height: 38px; width: auto; display: block; }
+.brand-wordmark {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 4px 11px;
+}
+.brand-tagline { color: var(--muted); font-size: 0.85rem; }
+
+.trust-note {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  background: var(--surface-2);
+}
+.trust-note h2 { font-size: 0.98rem; margin: 0 0 10px; }
+.trust-note ul { margin: 0; padding-left: 20px; }
+.trust-note li { font-size: 0.87rem; color: var(--ink-soft); margin-bottom: 6px; }
+.trust-note li:last-child { margin-bottom: 0; }
+.trust-foot { font-size: 0.82rem; color: var(--muted); margin: 12px 0 0; }
+.trust-note a { color: var(--ink); font-weight: 600; }
 
 /* uploads */
 .uploads {

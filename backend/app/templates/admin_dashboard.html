@@ -18,7 +18,12 @@
   </div>
 
   <div class="card">
-    <h2>Links</h2>
+    <div class="topbar">
+      <h2>Links</h2>
+      {% if links %}
+        <a class="btn small ghost" href="/admin/export.xlsx">Export all to Excel</a>
+      {% endif %}
+    </div>
     {% if not links %}
       <p class="muted">No links yet. Create one above.</p>
     {% else %}

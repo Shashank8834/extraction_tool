@@ -35,6 +35,13 @@ def _build_section(section_key: str, title: str, raw: dict) -> dict:
     for f in raw.get("fields", []) or []:
         f = dict(f)
         f["name"] = _qualify(section_key, f["key"])
+        # `show_if: {field: education, value: Other}` -> the fully-qualified name
+        # of the controlling field, so the template and the validator don't each
+        # have to re-derive it.
+        cond = f.get("show_if")
+        if cond:
+            f["show_if_name"] = _qualify(section_key, cond["field"])
+            f["show_if_value"] = cond["value"]
         fields.append(f)
 
     uploads = []
@@ -45,7 +52,13 @@ def _build_section(section_key: str, title: str, raw: dict) -> dict:
         u["fills"] = [f["name"] for f in fields if u["key"] in _fill_sources(f)]
         uploads.append(u)
 
-    return {"key": section_key, "title": title, "fields": fields, "uploads": uploads}
+    return {
+        "key": section_key,
+        "title": title,
+        "note": raw.get("note", ""),
+        "fields": fields,
+        "uploads": uploads,
+    }
 
 
 def _normalise(cfg: dict) -> dict:
@@ -79,6 +92,7 @@ def _normalise(cfg: dict) -> dict:
     return {
         "title": cfg.get("title", "Client Details"),
         "description": cfg.get("description", ""),
+        "brand": cfg.get("brand", {}) or {},
         "sections": sections,
         "slots": slots,
     }

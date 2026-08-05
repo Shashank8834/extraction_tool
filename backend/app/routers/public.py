@@ -43,8 +43,19 @@ def _section_has_din(section: dict, values: dict) -> bool:
     return False
 
 
+def _field_visible(field: dict, values: dict) -> bool:
+    """False for a `show_if` field whose controlling field doesn't match — e.g.
+    "please specify your qualification", shown only when Education is Other."""
+    name = field.get("show_if_name")
+    if not name:
+        return True
+    return (values.get(name) or "").strip() == field.get("show_if_value")
+
+
 def _field_required(field: dict, section: dict, values: dict) -> bool:
     if not field.get("required"):
+        return False
+    if not _field_visible(field, values):
         return False
     if field.get("hide_if_din") and _section_has_din(section, values):
         return False
@@ -149,8 +160,10 @@ async def submit_form(token: str, request: Request, db: Session = Depends(get_db
         for field in section["fields"]:
             name = field["name"]
             val = (form.get(name) or "").strip()
-            values[name] = val
-            if _field_required(field, section, values) and not val:
+            # A hidden conditional field is stored blank, so a stale answer
+            # (Other + text, then switched to Graduate) can't reach the record.
+            values[name] = val if _field_visible(field, values) else ""
+            if _field_required(field, section, values) and not values[name]:
                 errors[name] = "This field is required."
 
     # --- uploads ---

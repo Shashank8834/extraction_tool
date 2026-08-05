@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..config_loader import get_form_config
 from ..database import get_db
+from ..exporting import all_submissions_workbook, attachments_zip, submission_workbook
 from ..models import Submission, SubmissionLink, Upload
 from ..security import is_inline_safe, sanitize_filename, verify_admin
 from ..storage import delete_file, load_decrypted
@@ -140,6 +141,72 @@ def view_submission(link_id: str, request: Request, db: Session = Depends(get_db
             "uploads_by_slot": uploads_by_slot,
         },
     )
+
+
+# --- exports -----------------------------------------------------------------
+
+_XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _download(data: bytes, filename: str, media_type: str) -> StreamingResponse:
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _export_stem(link: SubmissionLink) -> str:
+    """Filename stem for a link's exports, e.g. 'Acme_LLP_20260805'."""
+    label = sanitize_filename(link.label or "submission").rstrip("_") or "submission"
+    return f"{label}_{(link.completed_at or link.created_at).strftime('%Y%m%d')}"
+
+
+@router.get("/submissions/{link_id}/excel")
+def download_submission_excel(link_id: str, request: Request, db: Session = Depends(get_db)):
+    redirect = _require_auth(request)
+    if redirect:
+        return redirect
+    link = db.query(SubmissionLink).filter(SubmissionLink.id == link_id).first()
+    if link is None or link.submission is None:
+        return RedirectResponse("/admin", status_code=303)
+
+    cfg = get_form_config()
+    uploads_by_slot = {u.field_key: u for u in link.submission.uploads}
+    data = submission_workbook(cfg, link, link.submission, uploads_by_slot)
+    return _download(data, f"{_export_stem(link)}.xlsx", _XLSX_TYPE)
+
+
+@router.get("/submissions/{link_id}/attachments.zip")
+def download_submission_attachments(link_id: str, request: Request, db: Session = Depends(get_db)):
+    redirect = _require_auth(request)
+    if redirect:
+        return redirect
+    link = db.query(SubmissionLink).filter(SubmissionLink.id == link_id).first()
+    if link is None or link.submission is None:
+        return RedirectResponse("/admin", status_code=303)
+
+    data = attachments_zip(get_form_config(), link, link.submission)
+    return _download(data, f"{_export_stem(link)}_documents.zip", "application/zip")
+
+
+@router.get("/export.xlsx")
+def download_all_submissions(request: Request, db: Session = Depends(get_db)):
+    """Every completed submission, one row each."""
+    redirect = _require_auth(request)
+    if redirect:
+        return redirect
+    records = [
+        (link, link.submission)
+        for link in db.query(SubmissionLink).order_by(SubmissionLink.created_at.desc()).all()
+        if link.submission is not None
+    ]
+    data = all_submissions_workbook(get_form_config(), records)
+    stamp = datetime.utcnow().strftime("%Y%m%d")
+    return _download(data, f"all_submissions_{stamp}.xlsx", _XLSX_TYPE)
 
 
 @router.get("/files/{upload_id}")

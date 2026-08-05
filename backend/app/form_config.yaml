@@ -2,6 +2,7 @@
 # LLP INCORPORATION — CLIENT INTAKE FORM
 # ---------------------------------------------------------------------------
 # Edit this one file to change the form. Structure:
+#   brand            : logo / link shown in the header and the safety notice
 #   partner_template : the field/upload set repeated for each partner
 #   partners         : which partners to render (add a line for a 3rd, etc.)
 #   sections         : the non-repeating sections, in render order
@@ -17,46 +18,74 @@
 # client uploads first supplies the value — a later upload never overwrites a
 # field that already has something in it, so nothing the client typed is lost.
 # Anything no document could supply is simply left for the client to type.
+#
+# `help` on a field and `hint` on an upload render as a small grey note, so the
+# client knows what to give and why we need it. `note` does the same per
+# section. `show_if` reveals a field only when another field has a given value.
 # ===========================================================================
 
 title: "LLP Incorporation — Client Details"
-description: "Fill in the details below. Where you upload a document (PAN, Aadhaar, etc.), we read it and fill the related fields for you — please review and correct anything before submitting."
+description: "Please fill in the details below. Wherever you upload a document, we read it and fill the related fields for you — review and correct anything before you submit."
+
+# --- Branding shown in the header and the safety notice --------------------
+# To use a real logo: drop the image in app/static/ and set `logo` to its path,
+# e.g. logo: "/static/bcl-logo.png". Leave it blank to show the name as text.
+brand:
+  name: "BCL India"
+  url: "https://bclindia.in/"
+  logo: ""
+  tagline: "Chartered Accountants"
 
 # --- Repeated for every designated partner -------------------------------
 partner_template:
+  note: "Upload the documents first — we read what we can from them and fill the fields below automatically. Anything we cannot read, please type in yourself."
+
   uploads:
     - key: pan
       label: "PAN Card"
       extractor: pan
       required: true
       accept: "image/*,application/pdf"
+      hint: "We read your name, your father's name, PAN number and date of birth from this."
     - key: aadhaar
       label: "Aadhaar Card"
       extractor: aadhaar
       required: true
       accept: "image/*,application/pdf"
+      hint: "Please upload both sides if you can. Your address is printed on the back — the front alone only gives us your name and date of birth."
     - key: bank_statement
       label: "Latest Bank Statement"
       extractor: bank_statement
-      required: false
+      required: true
       accept: "image/*,application/pdf"
+      hint: "Your most recent statement. We read your permanent address from it — the page showing your name and address is enough."
 
   fields:
     - {key: first_name,        label: "First Name",                          type: text,     required: true,  fill_from: [pan, aadhaar]}
     - {key: last_name,         label: "Last Name",                           type: text,     required: true,  fill_from: [pan, aadhaar]}
-    - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false}
+    - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false,
+       help: "If you have ever been a Director or Partner in a company or LLP, you already have one. Leave it blank if you do not."}
     - {key: father_first_name, label: "Father's First Name",                 type: text,     required: true,  fill_from: pan}
     - {key: father_last_name,  label: "Father's Last Name",                  type: text,     required: true,  fill_from: pan}
-    - {key: present_address,   label: "Present Address",                     type: textarea, required: true,  fill_from: aadhaar}
-    - {key: permanent_address, label: "Permanent Address",                   type: textarea, required: true,  fill_from: bank_statement, hide_if_din: true}
+    - {key: present_address,   label: "Present Address",                     type: textarea, required: true,  fill_from: aadhaar,
+       help: "Where you live now. Read from the back of your Aadhaar card."}
+    - {key: permanent_address, label: "Permanent Address",                   type: textarea, required: true,  fill_from: bank_statement, hide_if_din: true,
+       help: "Read from your bank statement. Not required if you already have a DIN."}
     - {key: mobile,            label: "Mobile Number",                       type: tel,      required: true}
     - {key: email,             label: "Email ID",                            type: email,    required: true}
     - {key: occupation,        label: "Occupation",                          type: text,     required: true}
+    - {key: education,         label: "Educational Qualification",           type: select,   required: true,
+       options: ["", "Graduate", "Post Graduate", "Doctorate", "Diploma", "12th / Higher Secondary", "10th / Secondary", "Other"],
+       help: "Required in the MCA incorporation form. Pick the highest qualification you hold."}
+    - {key: education_other,   label: "Please specify your qualification",   type: text,     required: true,
+       show_if: {field: education, value: "Other"}}
     - {key: pan_number,        label: "Income Tax PAN",                      type: text,     required: true,  fill_from: pan}
     - {key: dob,               label: "Date of Birth",                       type: text,     required: true,  fill_from: [pan, aadhaar], placeholder: "DD/MM/YYYY"}
-    - {key: nationality,       label: "Nationality",                         type: text,     required: true,  default: "Indian"}
+    - {key: nationality,       label: "Nationality",                         type: text,     required: true,  default: "Indian",
+       help: "Please confirm this is correct."}
     - {key: partner_elsewhere, label: "Are you a Director/Partner in any other company/LLP?", type: select, required: true, options: ["No", "Yes"]}
-    - {key: place_of_birth,    label: "Place of Birth (District & State)",   type: text,     required: true,  hide_if_din: true}
+    - {key: place_of_birth,    label: "Place of Birth (District & State)",   type: text,     required: true,  hide_if_din: true,
+       help: "Needed to complete the LLP form. Not required if you already have a DIN."}
     - {key: has_dsc,           label: "Do you have a DSC (Digital Signature)?", type: select, required: true, options: ["Not sure", "Yes", "No"]}
 
 partners:
@@ -70,33 +99,44 @@ sections:
     title: "Proposed LLP"
     position: top
     fields:
-      - {key: proposed_names, label: "Proposed LLP Names", type: textarea, required: true}
+      - {key: proposed_names, label: "Proposed LLP Names", type: textarea, required: true,
+         help: "Give us 2–4 names and we will run an MCA search. Please avoid words like 'holdings' or 'ventures' — MCA generally does not allow them."}
 
   - key: capital
     title: "Capital & Sharing"
+    note: "How much each partner puts in, and how profits are split between them."
     fields:
-      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true}
+      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true,
+         help: "An amount, for example 10,000 or 25,000. The main founder normally holds the majority."}
       - {key: partner2_capital, label: "Second Partner — Capital Contribution", type: text, required: true}
-      - {key: partner1_profit,  label: "First Partner — Profit/Loss Share (%)",  type: text, required: true}
+      - {key: partner1_profit,  label: "First Partner — Profit/Loss Share (%)",  type: text, required: true,
+         help: "A percentage. The two shares should add up to 100."}
       - {key: partner2_profit,  label: "Second Partner — Profit/Loss Share (%)", type: text, required: true}
 
   - key: office
     title: "Registered Office"
+    note: "The official address of the LLP. It must match the utility bill you upload."
     uploads:
       - key: utility_bill
         label: "Latest Electricity / Telephone Bill"
         extractor: utility_bill
         required: true
         accept: "image/*,application/pdf"
+        hint: "Must be the latest bill for the office premises. We read the address and the name it is billed to."
     fields:
       - {key: office_address,  label: "Registered Office Address",           type: textarea, required: true, fill_from: utility_bill}
       - {key: utility_name,    label: "Property Owner / Name on the Bill",   type: text,     required: true, fill_from: utility_bill}
-      - {key: lat_long,        label: "Latitude & Longitude of the Office",  type: text,     required: true}
-      - {key: police_station,  label: "Nearby Police Station",              type: text,     required: true}
+      - {key: lat_long,        label: "Latitude & Longitude of the Office",  type: text,     required: true,
+         help: "Mandatory in the incorporation form, so we have to ask. You can get it from Google Maps — long-press the office location and copy the numbers."}
+      - {key: police_station,  label: "Nearby Police Station",              type: text,     required: true,
+         help: "Mandatory in the incorporation form, so we have to ask."}
 
   - key: llp_details
     title: "LLP Details"
     fields:
-      - {key: object,      label: "Object of the LLP",                        type: textarea, required: true, default: "IT services"}
-      - {key: llp_email,   label: "LLP Email ID (different from the ones above)",   type: email, required: true}
-      - {key: llp_contact, label: "LLP Contact Number (different from the ones above)", type: tel, required: true}
+      - {key: object,      label: "Object of the LLP",                        type: textarea, required: true, default: "IT services",
+         help: "What the LLP will do. Generally 'IT services'."}
+      - {key: llp_email,   label: "LLP Email ID (different from the ones above)",   type: email, required: true,
+         help: "Please note: once the LLP is incorporated this address becomes public, and it will receive a lot of marketing email. Use a separate one, not your personal ID."}
+      - {key: llp_contact, label: "LLP Contact Number (different from the ones above)", type: tel, required: true,
+         help: "Same as above — this number becomes public and will get a lot of marketing calls."}
