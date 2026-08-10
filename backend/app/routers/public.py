@@ -1,17 +1,20 @@
+import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..config_loader import get_form_config
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..models import Submission, SubmissionLink, Upload
-from ..ocr.extractor import extract
+from ..ocr.extractor import extract, peek_cached
 from ..security import is_accepted_type
-from ..storage import save_encrypted
+from ..storage import load_decrypted, save_encrypted
 from ..templating import templates
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -128,8 +131,40 @@ async def extract_document(
 
 # --- POST submit -------------------------------------------------------------
 
+def _extract_after_response(pending: list[tuple[str, str]]) -> None:
+    """Read the documents whose extraction wasn't already done during autofill.
+
+    Runs after the client has been sent the thank-you page. Reading a document
+    takes a vision-LLM round trip each; doing all of them inside the submit
+    request is what pushed it past the reverse proxy's gateway timeout — the
+    client saw a 504 even though the submission itself had been saved.
+    """
+    db = SessionLocal()
+    try:
+        for upload_id, extractor_name in pending:
+            upload = db.get(Upload, upload_id)
+            if upload is None:
+                continue
+            try:
+                data = load_decrypted(upload.stored_filename)
+                raw_text, extracted = extract(extractor_name, data, upload.content_type)
+            except Exception:  # noqa: BLE001 - a failed read must not lose the document
+                log.exception("Post-submit extraction failed for upload %s", upload_id)
+                continue
+            upload.raw_text = raw_text
+            upload.extracted_data = extracted
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.post("/f/{token}", response_class=HTMLResponse)
-async def submit_form(token: str, request: Request, db: Session = Depends(get_db)):
+async def submit_form(
+    token: str,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     link = _get_link(db, token)
     state = _link_state(link)
     if state != "open":
@@ -205,26 +240,35 @@ async def submit_form(token: str, request: Request, db: Session = Depends(get_db
     db.add(submission)
     db.flush()
 
+    pending: list[tuple[str, str]] = []  # (upload_id, extractor) still to be read
     for slot_name, meta, filename, content_type, data in upload_files:
-        raw_text, extracted = extract(meta["extractor"], data, content_type)
+        # Usually already read during autofill, in which case this is free.
+        cached = peek_cached(meta["extractor"], data)
         stored = save_encrypted(data)
-        db.add(
-            Upload(
-                submission_id=submission.id,
-                field_key=slot_name,
-                doc_type=meta["extractor"],
-                original_filename=filename,
-                stored_filename=stored,
-                content_type=content_type,
-                size_bytes=len(data),
-                raw_text=raw_text,
-                extracted_data=extracted,
-            )
+        upload = Upload(
+            submission_id=submission.id,
+            field_key=slot_name,
+            doc_type=meta["extractor"],
+            original_filename=filename,
+            stored_filename=stored,
+            content_type=content_type,
+            size_bytes=len(data),
+            raw_text=cached[0] if cached else None,
+            extracted_data=cached[1] if cached else None,
         )
+        db.add(upload)
+        db.flush()  # assign the id the background pass needs
+        if cached is None:
+            pending.append((upload.id, meta["extractor"]))
 
     link.status = "completed"
     link.completed_at = datetime.utcnow()
     db.commit()
+
+    # The client's answers are safe on disk now; anything left to read happens
+    # after the response goes out, so the submit itself is always quick.
+    if pending:
+        background.add_task(_extract_after_response, pending)
 
     return templates.TemplateResponse("client_done.html", {"request": request})
 

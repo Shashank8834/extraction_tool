@@ -44,6 +44,9 @@
                   <tr><th>{{ key.replace("_", " ").title() }}</th><td>{{ value }}</td></tr>
                 {% endfor %}
               </table>
+            {% elif upload.raw_text is none %}
+              {# read after the submit went out — not finished yet #}
+              <p class="muted tiny">Still being read — refresh in a moment.</p>
             {% else %}
               <p class="muted tiny">Nothing auto-extracted.</p>
             {% endif %}

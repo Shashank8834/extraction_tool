@@ -6,9 +6,11 @@ leaves the host.
 here with a callable that takes raw OCR text (or, if you prefer image input,
 change `extract` to hand the model the bytes) and returns the same field dict.
 """
+import hashlib
 import io
 import json
 import logging
+from collections import OrderedDict
 
 import httpx
 import pytesseract
@@ -47,11 +49,45 @@ def run_ocr(file_bytes: bytes, content_type: str | None) -> str:
     return "\n".join(texts).strip()
 
 
+# --- result cache -----------------------------------------------------------
+# The same file is read twice: once when the client picks it (live autofill) and
+# again when they submit. A vision-LLM round trip per document is the slow part
+# of both, so the second read is served from here, keyed by content hash. Only
+# successful reads are cached — a failed one should be retried, not remembered.
+_CACHE: "OrderedDict[tuple[str, str], tuple[str, dict]]" = OrderedDict()
+_CACHE_MAX = 64
+
+
+def _cache_key(extractor_name: str, file_bytes: bytes) -> tuple[str, str]:
+    return (extractor_name, hashlib.sha256(file_bytes).hexdigest())
+
+
+def peek_cached(extractor_name: str, file_bytes: bytes) -> tuple[str, dict] | None:
+    """The already-computed result for this exact file, or None. Lets the submit
+    reuse the autofill's work instead of paying for the extraction again."""
+    return _CACHE.get(_cache_key(extractor_name, file_bytes))
+
+
 def extract(extractor_name: str, file_bytes: bytes, content_type: str | None) -> tuple[str, dict]:
     """Return (raw_text, extracted_fields). Never raises — failures return empty
-    results so a submission/autofill is never lost.
+    results so a submission/autofill is never lost. Results are cached by content
+    hash; see `peek_cached`."""
+    key = _cache_key(extractor_name, file_bytes)
+    hit = _CACHE.get(key)
+    if hit is not None:
+        _CACHE.move_to_end(key)
+        return hit
 
-    Uses the vision LLM (Gemini) when configured, falling back to Tesseract."""
+    result = _extract_uncached(extractor_name, file_bytes, content_type)
+    if result[1]:
+        _CACHE[key] = result
+        while len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
+    return result
+
+
+def _extract_uncached(extractor_name: str, file_bytes: bytes, content_type: str | None) -> tuple[str, dict]:
+    """Uses the vision LLM (Gemini) when configured, falling back to Tesseract."""
     # 1. Vision LLM, if enabled
     if llm.is_enabled():
         try:

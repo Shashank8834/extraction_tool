@@ -92,8 +92,14 @@ sections:
   - key: llp
     title: "Proposed LLP"
     position: top
+    note: "Please give 2–3 names in order of preference — we search each one with the MCA and apply for the first that is free. Avoid words like Holding, Venture, Capital, Bank, Insurance, Finance, Investment, Nidhi, Chit Fund, Mutual Fund or Exchange: these need separate regulatory approval and the name will be rejected without it."
     fields:
-      - {key: proposed_names, label: "Proposed LLP Names", type: textarea, required: true}
+      - {key: proposed_name_1, label: "Proposed LLP Name — 1st Choice", type: text, required: true}
+      - {key: proposed_name_2, label: "Proposed LLP Name — 2nd Choice", type: text, required: true}
+      - {key: proposed_name_3, label: "Proposed LLP Name — 3rd Choice", type: text, required: false}
+      - {key: proposed_name_4, label: "Proposed LLP Name — 4th Choice", type: text, required: false}
+      - {key: name_significance, label: "What the name stands for (optional)", type: textarea, required: false,
+         placeholder: "e.g. initials of the partners, the word's meaning, an existing brand you own"}
 
   - key: capital
     title: "Capital & Sharing"

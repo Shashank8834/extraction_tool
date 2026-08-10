@@ -117,7 +117,9 @@ def sample_value(field):
     if t == "tel":
         return "9998887777"
     if t == "select":
-        return field["options"][0]
+        # skip a leading "— Select —" placeholder: it is blank, so a required
+        # select would fail validation
+        return next(o for o in field["options"] if o)
     return "Sample " + field["key"]
 
 
@@ -179,7 +181,7 @@ check("submit ok", r.status_code == 200 and "Thank you" in r.text)
 db.expire_all()
 sub = db.query(SubmissionLink).filter(SubmissionLink.token == token).first().submission
 check("persisted", sub is not None and sub.form_data.get("partner1__first_name"))
-check("5 uploads stored", len(sub.uploads) == 5)
+check("every required upload stored", len(sub.uploads) == len(required_files()))
 check("upload extracted", {u.field_key: u for u in sub.uploads}["partner1__pan"].extracted_data.get("pan_number") == "ABCDE1234F")
 check("relink locked (410)", client.get(f"/f/{token}").status_code == 410)
 
