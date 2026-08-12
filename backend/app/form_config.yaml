@@ -34,7 +34,10 @@ brand:
   name: "BCL India"
   url: "https://bclindia.in/"
   logo: "/static/bcl-logo.png"
-  tagline: "Chartered Accountants"
+  # Offices, not a description of the firm — BCL India is not to be described as
+  # a Chartered Accountancy firm. Taken from the "Our Presence" list on
+  # bclindia.in: Bengaluru (HO), Byndoor, Sirsi, and Dubai (BCL Globiz).
+  tagline: "Bengaluru · Byndoor · Sirsi · Dubai"
 
 # --- Repeated for every designated partner -------------------------------
 partner_template:
