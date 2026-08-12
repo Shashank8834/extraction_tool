@@ -375,6 +375,121 @@ def _llp_gen_sheet(ws, cfg: dict, submission) -> None:
     _autosize(ws, {1: 52, 2: 62})
 
 
+# The ODI checklist, in the shape odi_parser reads: Sl.No | Section | Field |
+# Value. Third element is the intake field that supplies it, or None when only
+# the team can. Field names must match odi_parser.ODI_FIELD_MAP exactly.
+_ODI_CHECKLIST: list[tuple[str, str, str | None]] = [
+    ("Investor LLP Details", "LLP Name", "llp__proposed_name_1"),
+    ("Investor LLP Details", "LLPIN", None),
+    ("Investor LLP Details", "PAN", None),
+    ("Investor LLP Details", "Date of Incorporation", None),
+    ("Investor LLP Details", "Registered Office Address", "office__office_address"),
+    ("Investor LLP Details", "City", None),
+    ("Investor LLP Details", "State", None),
+    ("Investor LLP Details", "Country", None),
+    ("Investor LLP Details", "Official Email ID", "llp_details__llp_email"),
+    ("Investor LLP Details", "Contact Number", "llp_details__llp_contact"),
+    ("Investor LLP Details", "Business Activity", "llp_details__object"),
+    ("Designated Partner Details", "Partner Name", "@partner1_full_name"),
+    ("Designated Partner Details", "DPIN/DIN", "partner1__din"),
+    ("Designated Partner Details", "PAN", "partner1__pan_number"),
+    ("Designated Partner Details", "Aadhaar", None),
+    ("Designated Partner Details", "Passport Number", None),
+    ("Designated Partner Details", "Nationality", "partner1__nationality"),
+    ("Designated Partner Details", "Residential Address", "partner1__present_address"),
+    ("Designated Partner Details", "Mobile Number", "partner1__mobile"),
+    ("Designated Partner Details", "Email", "partner1__email"),
+    ("AD Bank Details", "AD Bank Name", None),
+    ("AD Bank Details", "Branch", None),
+    ("AD Bank Details", "Branch Address", None),
+    ("AD Bank Details", "Bank Account Number", None),
+    ("AD Bank Details", "IFSC / SWIFT Code", None),
+    ("AD Bank Details", "Bank Contact Person", None),
+    ("AD Bank Details", "Bank Contact Email", None),
+    ("Financial Details", "Financial Year", None),
+    ("Financial Details", "Net Worth of LLP", None),
+    ("Financial Details", "CA Name issuing Net Worth Certificate", None),
+    ("Financial Details", "Net Worth Certificate Date", None),
+    ("Financial Details", "Financial Commitment Limit (400% Net Worth)", None),
+    ("Financial Details", "Existing ODI Investment", None),
+    ("Financial Details", "Available ODI Limit", None),
+    ("Foreign Entity Details", "Foreign Entity Name", None),
+    ("Foreign Entity Details", "Country of Incorporation", None),
+    ("Foreign Entity Details", "Date of Incorporation", None),
+    ("Foreign Entity Details", "Entity Type (Company/LLC etc.)", None),
+    ("Foreign Entity Details", "Registration Number", None),
+    ("Foreign Entity Details", "Registered Address", None),
+    ("Foreign Entity Details", "Business Activity", None),
+    ("ODI Investment Details", "Investment Type (JV / WOS)", None),
+    ("ODI Investment Details", "Mode of Investment (Equity / Loan / Guarantee)", None),
+    ("ODI Investment Details", "Currency", None),
+    ("ODI Investment Details", "Amount of Investment", None),
+    ("ODI Investment Details", "No. of Shares to be Subscribed", None),
+    ("ODI Investment Details", "Face Value per Share", None),
+    ("ODI Investment Details", "Premium per Share", None),
+    ("ODI Investment Details", "Total Subscription Amount", None),
+    ("ODI Investment Details", "Post Investment Shareholding %", None),
+    ("Remittance Details", "Remittance Amount", None),
+    ("Remittance Details", "Currency", None),
+    ("Remittance Details", "Bank Account Used", None),
+    ("Remittance Details", "SWIFT Reference Number", None),
+    ("Valuation Details", "Valuation Required (Yes/No)", None),
+    ("Valuation Details", "Valuer Name", None),
+    ("Valuation Details", "Valuation Method", None),
+    ("Valuation Details", "Valuation Date", None),
+    ("Valuation Details", "Value Per Share", None),
+    ("FEMA Compliance", "Automatic Route / Approval Route", None),
+    ("RBI ODI Reporting", "UIN Number if allotted", None),
+]
+
+
+def _odi_gen_sheet(ws, cfg: dict, submission) -> None:
+    """The sheet the ODI tab of the document generator reads.
+
+    Same rule as the LLP sheet: values, not formulas. Rows the intake cannot
+    supply are left yellow — the team fills the foreign entity, the AD bank and
+    the financials before generating.
+    """
+    data = submission.form_data or {}
+    partners = [s for s in cfg["sections"] if s["is_partner"]]
+    signatory = partners[0]["key"] if partners else ""
+
+    def resolve(source: str | None):
+        if not source:
+            return None
+        if source == "@partner1_full_name":
+            first = data.get(f"{signatory}__first_name", "")
+            last = data.get(f"{signatory}__last_name", "")
+            return f"{first} {last}".strip()
+        return data.get(source, "")
+
+    _write_row(ws, 1, ["Sl.No", "Sections to cover", "Field Name / Checklist Item",
+                       "Description / Data to Capture"], _HEAD, _HEAD_FILL)
+    ws.freeze_panes = "A2"
+
+    last_section = ""
+    for i, (section, field, source) in enumerate(_ODI_CHECKLIST, start=1):
+        row = i + 1
+        ws.cell(row=row, column=1, value=i).font = _BODY
+        # only stamp the section on its first row, as the source checklist does
+        ws.cell(row=row, column=2, value="" if section == last_section else section).font = _LABEL
+        last_section = section
+        ws.cell(row=row, column=3, value=field).font = _BODY
+        value = resolve(source)
+        cell = ws.cell(row=row, column=4, value=value or "")
+        cell.alignment = _WRAP
+        if source:
+            cell.font = _BODY
+        else:
+            cell.font = _BODY
+            cell.fill = _INPUT_FILL
+        for col in range(1, 5):
+            ws.cell(row=row, column=col).border = _BORDER
+            ws.cell(row=row, column=col).alignment = _WRAP
+
+    _autosize(ws, {1: 7, 2: 26, 3: 44, 4: 46})
+
+
 def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> bytes:
     """One submission as the office's master file: Details, LLP agreement, ODI."""
     wb = Workbook()
@@ -385,6 +500,7 @@ def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> b
     _llp_agreement_sheet(wb.create_sheet("LLP agreement"), cfg, rows)
     _odi_sheet(wb.create_sheet("ODI sheet"), cfg, rows)
     _llp_gen_sheet(wb.create_sheet("Details to be filled"), cfg, submission)
+    _odi_gen_sheet(wb.create_sheet("ODI to be filled"), cfg, submission)
 
     buf = io.BytesIO()
     wb.save(buf)

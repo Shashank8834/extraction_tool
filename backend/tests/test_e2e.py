@@ -254,7 +254,8 @@ sub_link = db.query(SubmissionLink).filter(SubmissionLink.token == token).first(
 xlsx = submission_workbook(CFG, sub_link, sub_link.submission,
                            {u.field_key: u for u in sub_link.submission.uploads})
 wbk = load_workbook(io.BytesIO(xlsx))
-check("four sheets", wbk.sheetnames == ["Details", "LLP agreement", "ODI sheet", "Details to be filled"])
+check("five sheets", wbk.sheetnames == ["Details", "LLP agreement", "ODI sheet",
+                                        "Details to be filled", "ODI to be filled"])
 # llp-gen reads this sheet with plain openpyxl: a formula would arrive as its
 # literal text and land in a filed document
 gen = wbk["Details to be filled"]
@@ -269,6 +270,18 @@ check("bridge sheet keeps llp-gen row positions",
       and gen["A44"].value == "Registered office address"
       and gen["A51"].value == "Objects of the LLP")
 check("relation reaches the generator", gen["B18"].value in ("Son", "Daughter", "Wife", "Husband"))
+
+# the ODI tab of the generator reads this one: Sl.No | Section | Field | Value
+odi = wbk["ODI to be filled"]
+check("ODI sheet uses the checklist header", odi["A1"].value == "Sl.No" and odi["C1"].value.startswith("Field Name"))
+check("ODI sheet holds values, not formulas",
+      not any(isinstance(c.value, str) and c.value.startswith("=")
+              for r in odi.iter_rows() for c in r))
+odi_rows = {odi.cell(row=r, column=3).value: odi.cell(row=r, column=4).value
+            for r in range(2, odi.max_row + 1)}
+check("ODI sheet carries the LLP name", bool(odi_rows.get("LLP Name")))
+check("ODI sheet leaves the foreign entity to the team",
+      not odi_rows.get("Foreign Entity Name"))
 check("no Notes column", wbk["Details"]["C1"].value is None)
 
 det = wbk["Details"]
