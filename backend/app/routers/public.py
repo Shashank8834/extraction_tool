@@ -84,31 +84,38 @@ def _format_problem(field: dict, value: str) -> str:
 
 
 def _duplicate_upload_errors(cfg: dict, upload_files: list) -> dict:
-    """Flag the same file uploaded against two different partners.
+    """Refuse one person's identity document uploaded for another partner.
 
-    This is the failure that does real damage: one partner's Aadhaar uploaded
-    as another's bank statement silently copies the first partner's address
-    onto the second, and the LLP agreement then carries it into a filing
-    looking perfectly plausible. Within a single partner the same file may
-    legitimately answer two slots, so only cross-partner reuse is refused.
+    The damage this prevents is real: partner 1's Aadhaar uploaded as partner
+    2's document silently copies partner 1's address onto partner 2, and the
+    LLP agreement carries it into a filing looking perfectly plausible.
+
+    Only PAN and Aadhaar are checked, and only across partners. Two people
+    cannot share those. They can share the rest — spouses with a joint account
+    file one bank statement, and the office utility bill belongs to the LLP
+    rather than to any partner — so refusing those would block honest
+    submissions. Within one partner, the same PDF may answer two slots.
     """
     from hashlib import sha256
 
-    seen: dict[str, tuple[str, str]] = {}  # digest -> (section, slot label)
+    identity = {"pan", "aadhaar"}
     labels = {up["name"]: up["label"] for s in cfg["sections"] for up in s["uploads"]}
     sections = {up["name"]: s["title"] for s in cfg["sections"] for up in s["uploads"]}
 
+    seen: dict[str, tuple[str, str]] = {}  # digest -> (section, slot label)
     errors: dict = {}
-    for slot_name, _meta, _filename, _ctype, data in upload_files:
+    for slot_name, meta, _filename, _ctype, data in upload_files:
+        if meta.get("extractor") not in identity:
+            continue
         digest = sha256(data).hexdigest()
         section = sections.get(slot_name, "")
         if digest in seen:
             first_section, first_label = seen[digest]
             if first_section != section:
                 errors[slot_name] = (
-                    f"This is the same file uploaded under “{first_section}” as "
-                    f"“{first_label}”. Each partner needs their own documents — "
-                    "please upload the right one."
+                    f"This looks like the same file already uploaded under "
+                    f"{first_section} as {first_label}. A PAN or Aadhaar belongs "
+                    "to one person — please upload this partner's own document."
                 )
                 continue
         else:

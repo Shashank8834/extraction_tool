@@ -63,6 +63,11 @@
   {% if errors %}
     <div class="alert error">
       {{ errors.get("__all__", "Please fix the highlighted fields below.") }}
+      {# A browser will not re-attach files for us, so anything the client
+         chose before the error is gone from the form. Saying so beats them
+         pressing Submit again and wondering why it keeps failing. #}
+      <p class="alert-sub">Your typed answers have been kept, but the documents
+        need to be attached again before you submit.</p>
     </div>
   {% endif %}
 

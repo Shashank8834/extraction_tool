@@ -237,9 +237,16 @@ check("spaced +91 mobile accepted",
 # the wrong address into a filing
 l10 = new_link("L10")
 files = required_files()
-files["partner2__bank_statement"] = files["partner1__aadhaar"]
-check("same file across two partners rejected",
+files["partner2__aadhaar"] = files["partner1__aadhaar"]
+check("same identity document across two partners rejected",
       client.post(f"/f/{l10.token}", data=valid_data(), files=files).status_code == 400)
+# spouses with a joint account file one statement; the office bill belongs to
+# no partner at all. Refusing these blocked honest submissions.
+l12 = new_link("L12")
+files = required_files()
+files["partner2__bank_statement"] = files["partner1__bank_statement"]
+check("shared bank statement allowed",
+      client.post(f"/f/{l12.token}", data=valid_data(), files=files).status_code == 200)
 l11 = new_link("L11")
 files = required_files()
 files["partner1__bank_statement"] = files["partner1__aadhaar"]

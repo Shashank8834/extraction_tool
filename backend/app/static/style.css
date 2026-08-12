@@ -235,6 +235,7 @@ input[type="file"]::file-selector-button:hover { background: var(--purple-dark);
          border: 1px solid var(--line); }
 .alert.error { background: #fdf2f6; color: #8f1f42; border-color: #f3cede; border-left: 4px solid var(--magenta); }
 .field-error { color: var(--magenta); font-weight: 600; font-size: 0.84rem; margin-top: 5px; }
+.alert-sub { margin: 6px 0 0; font-size: 0.86rem; font-weight: 400; }
 
 /* --- layout helpers --- */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
