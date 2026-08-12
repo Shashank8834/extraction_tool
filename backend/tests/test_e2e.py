@@ -121,6 +121,8 @@ def sample_value(field):
     if t == "tel":
         # leading zero: the export must not turn this into a number
         return "09998887777"
+    if field.get("key") == "pan_number":
+        return "ABCDE1234F"
     if t == "select":
         # skip a leading "— Select —" placeholder: it is blank, so a required
         # select would fail validation
@@ -140,11 +142,14 @@ def valid_data(skip=()):
 
 
 def required_files():
+    """Distinct bytes per slot: identical files across two partners are refused
+    on purpose, so a fixture that reused one blob would be testing nothing."""
     files = {}
     for section in CFG["sections"]:
         for up in section["uploads"]:
             if up.get("required"):
-                files[up["name"]] = (up["key"] + ".jpg", JPG[0], JPG[1])
+                name = up["name"]
+                files[name] = (up["key"] + ".jpg", JPG[0] + name.encode(), JPG[1])
     return files
 
 
@@ -201,6 +206,45 @@ check("DIN makes fields optional", client.post(f"/f/{l3.token}", data=d, files=r
 l4 = new_link("L4")
 check("no DIN keeps them required", client.post(f"/f/{l4.token}",
       data=valid_data(skip=("partner1__permanent_address",)), files=required_files()).status_code == 400)
+
+print("== data quality ==")
+l5 = new_link("L5")
+d = valid_data()
+d["partner1__mobile"] = "na"
+check("placeholder mobile rejected",
+      client.post(f"/f/{l5.token}", data=d, files=required_files()).status_code == 400)
+l6 = new_link("L6")
+d = valid_data()
+d["partner1__email"] = "nil"
+check("placeholder email rejected",
+      client.post(f"/f/{l6.token}", data=d, files=required_files()).status_code == 400)
+l7 = new_link("L7")
+d = valid_data()
+d["partner1__mobile"] = "12345"
+check("short mobile rejected",
+      client.post(f"/f/{l7.token}", data=d, files=required_files()).status_code == 400)
+l8 = new_link("L8")
+d = valid_data()
+d["partner1__pan_number"] = "1234567890"
+check("malformed PAN rejected",
+      client.post(f"/f/{l8.token}", data=d, files=required_files()).status_code == 400)
+l9 = new_link("L9")
+d = valid_data()
+d["partner1__mobile"] = "+91 99988 87777"
+check("spaced +91 mobile accepted",
+      client.post(f"/f/{l9.token}", data=d, files=required_files()).status_code == 200)
+# one partner's document uploaded as another's: the failure that quietly copies
+# the wrong address into a filing
+l10 = new_link("L10")
+files = required_files()
+files["partner2__bank_statement"] = files["partner1__aadhaar"]
+check("same file across two partners rejected",
+      client.post(f"/f/{l10.token}", data=valid_data(), files=files).status_code == 400)
+l11 = new_link("L11")
+files = required_files()
+files["partner1__bank_statement"] = files["partner1__aadhaar"]
+check("same file within one partner allowed",
+      client.post(f"/f/{l11.token}", data=valid_data(), files=files).status_code == 200)
 
 print("== master workbook ==")
 from openpyxl import load_workbook  # noqa: E402

@@ -46,6 +46,76 @@ def _section_has_din(section: dict, values: dict) -> bool:
     return False
 
 
+# Everything typed here ends up verbatim on an MCA filing, so a placeholder
+# like "na" or "nil" is worse than a blank — it gets filed. These are the ones
+# that actually turned up in real submissions.
+_PLACEHOLDERS = {"na", "n/a", "nil", "none", "no", "-", "--", "nan", "xx", "xxx", "tbd", "."}
+
+
+def _format_problem(field: dict, value: str) -> str:
+    """A human explanation of why this value cannot be filed, or ''."""
+    kind = field.get("type")
+    lowered = value.strip().lower()
+
+    if kind in ("tel", "email") or field.get("key") in ("pan_number", "dob"):
+        if lowered in _PLACEHOLDERS:
+            return "Please give the real details — this goes onto the filing as typed."
+
+    if kind == "email":
+        # deliberately loose: one @, a dot in the domain, no spaces
+        if " " in value or value.count("@") != 1 or "." not in value.split("@")[-1]:
+            return "Please enter a valid email address, e.g. name@example.com."
+
+    if kind == "tel":
+        digits = "".join(ch for ch in value if ch.isdigit())
+        if digits.startswith("91") and len(digits) == 12:
+            digits = digits[2:]
+        elif digits.startswith("0") and len(digits) == 11:
+            digits = digits[1:]
+        if len(digits) != 10:
+            return "Please enter a 10-digit mobile number."
+
+    if field.get("key") == "pan_number":
+        pan = value.strip().upper()
+        if len(pan) != 10 or not (pan[:5].isalpha() and pan[5:9].isdigit() and pan[9].isalpha()):
+            return "A PAN is 10 characters, like ABCDE1234F. Please check it."
+
+    return ""
+
+
+def _duplicate_upload_errors(cfg: dict, upload_files: list) -> dict:
+    """Flag the same file uploaded against two different partners.
+
+    This is the failure that does real damage: one partner's Aadhaar uploaded
+    as another's bank statement silently copies the first partner's address
+    onto the second, and the LLP agreement then carries it into a filing
+    looking perfectly plausible. Within a single partner the same file may
+    legitimately answer two slots, so only cross-partner reuse is refused.
+    """
+    from hashlib import sha256
+
+    seen: dict[str, tuple[str, str]] = {}  # digest -> (section, slot label)
+    labels = {up["name"]: up["label"] for s in cfg["sections"] for up in s["uploads"]}
+    sections = {up["name"]: s["title"] for s in cfg["sections"] for up in s["uploads"]}
+
+    errors: dict = {}
+    for slot_name, _meta, _filename, _ctype, data in upload_files:
+        digest = sha256(data).hexdigest()
+        section = sections.get(slot_name, "")
+        if digest in seen:
+            first_section, first_label = seen[digest]
+            if first_section != section:
+                errors[slot_name] = (
+                    f"This is the same file uploaded under “{first_section}” as "
+                    f"“{first_label}”. Each partner needs their own documents — "
+                    "please upload the right one."
+                )
+                continue
+        else:
+            seen[digest] = (section, labels.get(slot_name, slot_name))
+    return errors
+
+
 def _field_visible(field: dict, values: dict) -> bool:
     """False for a `show_if` field whose controlling field doesn't match — e.g.
     "please specify your qualification", shown only when Education is Other."""
@@ -200,6 +270,10 @@ async def submit_form(
             values[name] = val if _field_visible(field, values) else ""
             if _field_required(field, section, values) and not values[name]:
                 errors[name] = "This field is required."
+            elif values[name]:
+                problem = _format_problem(field, values[name])
+                if problem:
+                    errors[name] = problem
 
     # --- uploads ---
     upload_files = []  # (slot_name, meta, filename, content_type, bytes)
@@ -223,6 +297,8 @@ async def submit_form(
             errors[slot_name] = "Uploaded file is empty."
             continue
         upload_files.append((slot_name, meta, file.filename, file.content_type, data))
+
+    errors.update(_duplicate_upload_errors(cfg, upload_files))
 
     if errors:
         return templates.TemplateResponse(
