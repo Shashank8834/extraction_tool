@@ -304,6 +304,77 @@ def _odi_sheet(ws, cfg: dict, rows: dict[str, int]) -> None:
     _autosize(ws, {1: 44, 2: 46, 3: 30})
 
 
+# The layout llp-gen's ExcelParser expects. It finds each partner block by
+# scanning column A for "designated partner details" and then reads fixed
+# offsets from that row, and it reads the LLP-level rows by absolute number —
+# so this sheet must keep exactly these labels at exactly these rows.
+_LLP_GEN_PARTNER_LABELS = [
+    ("First Name", "first_name"),
+    ("Last Name", "last_name"),
+    ("DIN if any", "din"),
+    ("Father First Name", "father_first_name"),
+    ("Father Last name", "father_last_name"),
+    ("Present address of the Partner", "present_address"),
+    ("Permanent Address of the partner", "permanent_address"),
+    ("Mobile number", "mobile"),
+    ("Email id", "email"),
+    ("Occupation", "occupation"),
+    ("Income tax Pan/Passport", "pan_number"),
+    ("Date of Birth", "dob"),
+    ("Nationality", "nationality"),
+    ("Director/Partner in any company/LLP", "partner_elsewhere"),
+    ("Member of ICSI/ICAI/ICWAI", "professional_membership"),
+    ("Relation (Son/Daughter/Wife/Husband)", "relation"),
+]
+
+
+def _llp_gen_sheet(ws, cfg: dict, submission) -> None:
+    """The sheet the LLP document generator reads.
+
+    Values, never formulas: llp-gen opens the file with plain openpyxl, which
+    hands back a formula as its literal text rather than its result. A formula
+    here would put "=Details!B17" into a filed document.
+    """
+    data = submission.form_data or {}
+    partners = [s for s in cfg["sections"] if s["is_partner"]][:2]
+
+    def put(row: int, label: str, value="") -> None:
+        ws.cell(row=row, column=1, value=label).font = _LABEL
+        cell = ws.cell(row=row, column=2, value=value)
+        cell.font = _BODY
+        cell.alignment = _WRAP
+
+    put(1, "Name of the Proposed LLP", data.get("llp__proposed_name_1", ""))
+
+    # partner blocks at rows 2 and 19, exactly as the generator expects
+    for i, section in enumerate(partners):
+        head = 2 + i * 17
+        ordinal = "First" if i == 0 else "Second"
+        put(head, f"{ordinal} Designated partner details")
+        for offset, (label, key) in enumerate(_LLP_GEN_PARTNER_LABELS, start=1):
+            put(head + offset, label, data.get(f"{section['key']}__{key}", ""))
+
+    put(36, "Capital of the LLP")
+    put(37, "First Designated partner share", data.get("capital__partner1_capital", ""))
+    put(38, "Second Designated partner share", data.get("capital__partner2_capital", ""))
+    put(40, "Profit or loss sharing ratio")
+    put(41, "First Designated partner share", data.get("capital__partner1_profit", ""))
+    put(42, "Second Designated partner share", data.get("capital__partner2_profit", ""))
+    put(44, "Registered office address", data.get("office__office_address", ""))
+    put(45, "Property in the name of/name in the Utility bill",
+        data.get("office__utility_name", ""))
+    put(47, "DSC status - person with a DIN needs a DSC mandatorily, else a DSC of "
+            "one partner will do", data.get("partner1__has_dsc", ""))
+    put(48, "DSC Registered in MCA?")
+    put(49, "Signed documents in place")
+    put(51, "Objects of the LLP", data.get("llp_details__object", ""))
+    put(53, "Email id and contact number of the LLP, other than one given above",
+        f'{data.get("llp_details__llp_email", "")} / '
+        f'{data.get("llp_details__llp_contact", "")}'.strip(" /"))
+
+    _autosize(ws, {1: 52, 2: 62})
+
+
 def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> bytes:
     """One submission as the office's master file: Details, LLP agreement, ODI."""
     wb = Workbook()
@@ -313,6 +384,7 @@ def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> b
 
     _llp_agreement_sheet(wb.create_sheet("LLP agreement"), cfg, rows)
     _odi_sheet(wb.create_sheet("ODI sheet"), cfg, rows)
+    _llp_gen_sheet(wb.create_sheet("Details to be filled"), cfg, submission)
 
     buf = io.BytesIO()
     wb.save(buf)

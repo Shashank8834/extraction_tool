@@ -210,7 +210,21 @@ sub_link = db.query(SubmissionLink).filter(SubmissionLink.token == token).first(
 xlsx = submission_workbook(CFG, sub_link, sub_link.submission,
                            {u.field_key: u for u in sub_link.submission.uploads})
 wbk = load_workbook(io.BytesIO(xlsx))
-check("three sheets", wbk.sheetnames == ["Details", "LLP agreement", "ODI sheet"])
+check("four sheets", wbk.sheetnames == ["Details", "LLP agreement", "ODI sheet", "Details to be filled"])
+# llp-gen reads this sheet with plain openpyxl: a formula would arrive as its
+# literal text and land in a filed document
+gen = wbk["Details to be filled"]
+check("bridge sheet holds values, not formulas",
+      not any(isinstance(c.value, str) and c.value.startswith("=")
+              for r in gen.iter_rows() for c in r))
+check("bridge sheet keeps llp-gen row positions",
+      gen["A1"].value == "Name of the Proposed LLP"
+      and "designated partner details" in gen["A2"].value.lower()
+      and "designated partner details" in gen["A19"].value.lower()
+      and gen["A37"].value == "First Designated partner share"
+      and gen["A44"].value == "Registered office address"
+      and gen["A51"].value == "Objects of the LLP")
+check("relation reaches the generator", gen["B18"].value in ("Son", "Daughter", "Wife", "Husband"))
 check("no Notes column", wbk["Details"]["C1"].value is None)
 
 det = wbk["Details"]

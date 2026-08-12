@@ -69,6 +69,13 @@ partner_template:
     - {key: din,               label: "Director Identification Number (DIN), if any", type: text, required: false}
     - {key: father_first_name, label: "Father's First Name",                 type: text,     required: true,  fill_from: pan}
     - {key: father_last_name,  label: "Father's Last Name",                  type: text,     required: true,  fill_from: pan}
+    # Decides S/o, D/o, W/o or H/o on Form 9, the subscriber sheet and the RBI
+    # declaration. Without it every partner is filed as "S/o", which is wrong
+    # for half of them — hence the explicit question rather than a guess.
+    - {key: relation,          label: "You are the … of the person named above", type: select, required: true,
+       options: ["Son", "Daughter", "Wife", "Husband"]}
+    - {key: professional_membership, label: "Membership of ICSI / ICAI / ICWAI, if any", type: text, required: false,
+       placeholder: "Membership number, or leave blank"}
     - {key: present_address,   label: "Present Address",                     type: textarea, required: true,  fill_from: aadhaar}
     - {key: permanent_address, label: "Permanent Address",                   type: textarea, required: true,  fill_from: bank_statement, hide_if_din: true}
     - {key: mobile,            label: "Mobile Number",                       type: tel,      required: true}
