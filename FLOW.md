@@ -52,26 +52,42 @@ In the dashboard the submission has *Download Excel* and *Download documents*
 | **Details** | Everything the client submitted, section by section. The single source of truth. |
 | **LLP agreement** | Drafting inputs: both parties' names, fathers' names, addresses, capital, the total, each partner's percentage, profit shares. |
 | **ODI sheet** | The Indian side filled in; foreign entity, shareholding and bank rows left **yellow** for the team. |
-| **Details to be filled** | The sheet the document generator reads. |
+| **Details to be filled** | What the generator's **LLP tab** reads. |
+| **ODI to be filled** | What the generator's **ODI tab** reads. Filled where intake can; yellow where the team must. |
 
 The first three sheets are linked by formula. Correct an address on **Details**
 and the LLP agreement and ODI sheets update themselves. Green values are pulled
 from Details — fix them there, not in place.
 
-**One thing to know:** the fourth sheet, *Details to be filled*, holds fixed
-values, not formulas, because the document generator cannot read formulas. If
-the team changes something on Details — the final approved LLP name, say — the
-same change must be made on *Details to be filled* before generating documents.
+**One thing to know:** the last two sheets hold fixed values, not formulas,
+because the document generator cannot read formulas. If the team changes
+something on Details — the final approved LLP name, say — the same change must
+be made on *Details to be filled* and *ODI to be filled* before generating.
 
 ## 4. The documents get generated
 
-Upload the same master file to **https://llp-gen.vercel.app**, enter the date
-and place, and it produces:
+Upload the same master file to **https://llp-gen.vercel.app**. It has two tabs,
+and the one file drives both.
+
+**LLP Registration tab** — 5 documents:
 
 - Consent Letter (Form 9) for each partner
 - Subscriber Sheet
 - Consent Form under the LLP
 - NOC from the property owner
+
+**ODI Documents tab** — pick the bank format first:
+
+| Format | Documents |
+| --- | --- |
+| Standard | 18 |
+| HDFC | 11 |
+| ICICI | 12 |
+| Kotak | 12 |
+
+Before generating ODI, fill the yellow rows on *ODI to be filled* — the foreign
+entity, the AD bank, net worth and the investment amounts. Nothing in the
+client intake can supply those.
 
 The team fills in the final approved name and anything that changed since
 intake, then files.
@@ -84,15 +100,12 @@ intake, then files.
 - The **ODI foreign-entity and bank rows** (the yellow cells).
 - A check that each partner's documents really are their own.
 
-## Where ODI stands
+## A note on the ODI platform
 
-The ODI sheet collects the Indian side automatically. The ODI platform
-(`odi_platform`) is a client tracker, and its bank-draft generator currently
-receives only three fields — client name, partner and email — so it has nowhere
-to put the foreign entity, investment or bank details. Making ODI generate
-bank-wise documents from this master file is the next piece of work, and it
-needs a decision on whether to extend that platform or generate the ODI
-documents the same way the LLP ones are generated.
+`odi_platform` is a separate system — a client tracker with statuses, invoices
+and analytics. It is not part of this document chain, and does not need to be:
+the ODI documents come out of the same generator as the LLP ones, from the same
+master file.
 
 ## The addresses
 
