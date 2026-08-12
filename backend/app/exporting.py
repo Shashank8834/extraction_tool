@@ -1,9 +1,20 @@
 """Admin exports: submissions as Excel, uploaded documents as a ZIP.
 
-The per-submission sheet deliberately mirrors the layout of the intake
-spreadsheet the office already works from — Particular / Details / Notes, with
-a heading row per section — so a completed submission drops straight into the
-existing process.
+The per-submission workbook is the office's master file for an incorporation.
+Three sheets:
+
+  Details        — what the client submitted, Particular / Details, section by
+                   section, mirroring the intake spreadsheet the office already
+                   works from.
+  LLP agreement  — the drafting inputs, pulled from Details by formula.
+  ODI sheet      — the ODI inputs; the Indian side pulled from Details, the
+                   foreign-entity and bank side left for the team to fill.
+
+The two derived sheets reference `Details` with real formulas rather than
+copied values, so the workbook stays a live master: correct an address on
+Details and both derived sheets follow. Row numbers are resolved at write time
+from the field names, so adding a field or a third partner to
+form_config.yaml cannot leave a formula pointing at the wrong row.
 """
 import io
 import zipfile
@@ -22,11 +33,22 @@ _SECTION = Font(name=_FONT, size=11, bold=True)
 _LABEL = Font(name=_FONT, size=10, bold=True)
 _BODY = Font(name=_FONT, size=10)
 _NOTE = Font(name=_FONT, size=9, italic=True, color="666666")
-_HEAD_FILL = PatternFill("solid", fgColor="1A1A1A")
+# green: pulled from another sheet by formula — do not type over it
+_LINKED = Font(name=_FONT, size=10, color="008000")
+_HEAD_FILL = PatternFill("solid", fgColor="6958C2")  # BCL purple
 _SECTION_FILL = PatternFill("solid", fgColor="EDEDED")
+# yellow: the team fills this in by hand
+_INPUT_FILL = PatternFill("solid", fgColor="FFFF00")
 _THIN = Side(style="thin", color="D9D9D9")
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
 _WRAP = Alignment(vertical="top", wrap_text=True)
+
+# party naming in the agreement, in the order partners appear in the config
+_ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"]
+
+
+def _ordinal(i: int) -> str:
+    return _ORDINALS[i] if i < len(_ORDINALS) else f"Partner {i + 1}"
 
 
 def _autosize(ws, widths: dict[int, int]) -> None:
@@ -44,15 +66,37 @@ def _write_row(ws, row: int, cells: list, font: Font, fill: PatternFill | None =
             cell.fill = fill
 
 
-def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> bytes:
-    """One submission, laid out section by section."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Details"
+def _as_number(field: dict, value):
+    """Write a `numeric: true` field as a number so the derived sheets can add
+    it up — a text cell counts as zero inside SUM, which silently produces a
+    total of 0 and blank percentages.
 
-    _write_row(ws, 1, ["Particular", "Details", "Notes"], _HEAD, _HEAD_FILL)
+    Only fields the config marks: coercing everything would strip the leading
+    zero off a phone number. Anything that will not parse stays as typed, so a
+    client writing "one lakh" is left alone rather than lost.
+    """
+    if not field.get("numeric") or not isinstance(value, str):
+        return value
+    cleaned = value.strip().replace(",", "").replace("₹", "").replace("%", "").strip()
+    if not cleaned:
+        return value
+    try:
+        number = float(cleaned)
+    except ValueError:
+        return value
+    return int(number) if number.is_integer() else number
+
+
+def _details_sheet(ws, cfg: dict, link, submission, uploads_by_slot: dict) -> dict[str, int]:
+    """Write the submitted data section by section.
+
+    Returns {field_name: row}, which the derived sheets use to build their
+    formulas — so no row number is ever written by hand.
+    """
+    _write_row(ws, 1, ["Particular", "Details"], _HEAD, _HEAD_FILL)
     ws.freeze_panes = "A2"
 
+    rows: dict[str, int] = {}
     row = 2
     meta = [
         ("Client / reference", link.label or "—"),
@@ -60,37 +104,216 @@ def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> b
         ("Submitted from IP", submission.client_ip or "—"),
     ]
     for label, value in meta:
-        _write_row(ws, row, [label, value, ""], _BODY)
+        _write_row(ws, row, [label, value], _BODY)
         ws.cell(row=row, column=1).font = _LABEL
         row += 1
     row += 1
 
     for section in cfg["sections"]:
-        _write_row(ws, row, [section["title"], "", section.get("note", "")], _SECTION, _SECTION_FILL)
+        _write_row(ws, row, [section["title"], ""], _SECTION, _SECTION_FILL)
         row += 1
 
         for up in section["uploads"]:
             upload = uploads_by_slot.get(up["name"])
             _write_row(
                 ws, row,
-                [up["label"], upload.original_filename if upload else "Not uploaded",
-                 "Attached document"],
+                [up["label"], upload.original_filename if upload else "Not uploaded"],
                 _BODY,
             )
             ws.cell(row=row, column=1).font = _LABEL
-            ws.cell(row=row, column=3).font = _NOTE
             row += 1
 
         for field in section["fields"]:
             value = (submission.form_data or {}).get(field["name"]) or ""
-            _write_row(ws, row, [field["label"], value, field.get("help", "")], _BODY)
+            _write_row(ws, row, [field["label"], _as_number(field, value)], _BODY)
             ws.cell(row=row, column=1).font = _LABEL
-            ws.cell(row=row, column=3).font = _NOTE
+            rows[field["name"]] = row
             row += 1
 
         row += 1
 
-    _autosize(ws, {1: 42, 2: 52, 3: 46})
+    _autosize(ws, {1: 42, 2: 62})
+    return rows
+
+
+def _link_cell(ws, row: int, col: int, ref: str | None) -> None:
+    """A cell that pulls its value from Details, in green so nobody types over
+    it. A field the config does not have yields a blank rather than a #REF!.
+
+    The IF guard matters: a plain `=Details!B20` pointing at an empty cell
+    renders as `0`, not as blank, and a `0` is exactly what must not turn up
+    where a father's name or a DIN belongs.
+    """
+    formula = f'=IF(Details!B{ref}="","",Details!B{ref})' if ref else ""
+    cell = ws.cell(row=row, column=col, value=formula)
+    cell.font = _LINKED if ref else _BODY
+    cell.alignment = _WRAP
+    cell.border = _BORDER
+
+
+def _input_cell(ws, row: int, col: int) -> None:
+    """A blank the team fills in by hand — yellow, per the legend."""
+    cell = ws.cell(row=row, column=col, value="")
+    cell.font = _BODY
+    cell.alignment = _WRAP
+    cell.border = _BORDER
+    cell.fill = _INPUT_FILL
+
+
+def _llp_agreement_sheet(ws, cfg: dict, rows: dict[str, int]) -> None:
+    """Drafting inputs for the LLP agreement, pulled from Details."""
+    partners = [s for s in cfg["sections"] if s["is_partner"]]
+
+    _write_row(ws, 1, ["Particular", "Details", ""], _HEAD, _HEAD_FILL)
+
+    r = 2
+    _write_row(ws, r, ["Name of the LLP", "", ""], _BODY)
+    ws.cell(row=r, column=1).font = _LABEL
+    _link_cell(ws, r, 2, rows.get("llp__proposed_name_1"))
+    r += 1
+    _write_row(ws, r, ["Registered office address", "", ""], _BODY)
+    ws.cell(row=r, column=1).font = _LABEL
+    _link_cell(ws, r, 2, rows.get("office__office_address"))
+    r += 2
+
+    # one block per partner: name, father's name, address
+    for i, section in enumerate(partners):
+        key = section["key"]
+        _write_row(ws, r, [f"{_ordinal(i)} Party details", "", ""], _SECTION, _SECTION_FILL)
+        r += 1
+        for label, first, last in (
+            ("Name", f"{key}__first_name", f"{key}__last_name"),
+            ("Father's name", f"{key}__father_first_name", f"{key}__father_last_name"),
+        ):
+            _write_row(ws, r, [label, "", ""], _BODY)
+            ws.cell(row=r, column=1).font = _LABEL
+            _link_cell(ws, r, 2, rows.get(first))
+            _link_cell(ws, r, 3, rows.get(last))
+            r += 1
+        _write_row(ws, r, ["Address", "", ""], _BODY)
+        ws.cell(row=r, column=1).font = _LABEL
+        _link_cell(ws, r, 2, rows.get(f"{key}__present_address"))
+        r += 2
+
+    # capital: each partner's contribution, the total, and each one's share of
+    # it as a percentage
+    _write_row(ws, r, ["Capital sharing ratio", "Capital", "%"], _SECTION, _SECTION_FILL)
+    r += 1
+    first_capital_row = r
+    for i, _ in enumerate(partners):
+        _write_row(ws, r, [f"{_ordinal(i)} Party", "", ""], _BODY)
+        ws.cell(row=r, column=1).font = _LABEL
+        _link_cell(ws, r, 2, rows.get(f"capital__partner{i + 1}_capital"))
+        r += 1
+    last_capital_row = r - 1
+    total_row = r
+    _write_row(ws, r, ["Total", "", ""], _BODY)
+    ws.cell(row=r, column=1).font = _LABEL
+    ws.cell(row=r, column=2).value = f"=SUM(B{first_capital_row}:B{last_capital_row})"
+    ws.cell(row=r, column=2).font = _LABEL
+    # percentages only once the total is known, and never a divide-by-zero
+    for i in range(len(partners)):
+        cap_row = first_capital_row + i
+        pct = ws.cell(row=cap_row, column=3)
+        pct.value = f'=IFERROR(B{cap_row}/$B${total_row}*100,"")'
+        pct.font = _BODY
+        pct.number_format = "0.00"
+    r += 2
+
+    _write_row(ws, r, ["Profit sharing ratio", "%", ""], _SECTION, _SECTION_FILL)
+    r += 1
+    for i, _ in enumerate(partners):
+        _write_row(ws, r, [f"{_ordinal(i)} Party", "", ""], _BODY)
+        ws.cell(row=r, column=1).font = _LABEL
+        _link_cell(ws, r, 2, rows.get(f"capital__partner{i + 1}_profit"))
+        r += 1
+
+    _autosize(ws, {1: 34, 2: 46, 3: 30})
+
+
+def _odi_sheet(ws, cfg: dict, rows: dict[str, int]) -> None:
+    """ODI inputs. The Indian side comes from Details; the foreign entity and
+    the bank details are left yellow for the team."""
+    partners = [s for s in cfg["sections"] if s["is_partner"]]
+    signatory = partners[0]["key"] if partners else ""
+
+    _write_row(ws, 1, ["Particular", "Details", ""], _HEAD, _HEAD_FILL)
+    _write_row(
+        ws, 2,
+        ["Yellow cells are filled in by the team. Green values come from the "
+         "Details sheet — correct them there, not here.", "", ""],
+        _NOTE,
+    )
+
+    r = 3
+    for label, ref in (
+        ("Name of the LLP", rows.get("llp__proposed_name_1")),
+        ("Registered office address", rows.get("office__office_address")),
+        ("Contact number", rows.get("llp_details__llp_contact")),
+        ("Email ID of the LLP", rows.get("llp_details__llp_email")),
+    ):
+        _write_row(ws, r, [label, "", ""], _BODY)
+        ws.cell(row=r, column=1).font = _LABEL
+        _link_cell(ws, r, 2, ref)
+        r += 1
+    r += 1
+
+    _write_row(
+        ws, r,
+        ["Partner authorised to sign the ODI", "", ""], _SECTION, _SECTION_FILL,
+    )
+    r += 1
+    _write_row(ws, r, ["Name", "", ""], _BODY)
+    ws.cell(row=r, column=1).font = _LABEL
+    _link_cell(ws, r, 2, rows.get(f"{signatory}__first_name"))
+    _link_cell(ws, r, 3, rows.get(f"{signatory}__last_name"))
+    r += 1
+    for label, ref in (
+        ("Address", rows.get(f"{signatory}__present_address")),
+        ("Email ID", rows.get(f"{signatory}__email")),
+        ("Contact number", rows.get(f"{signatory}__mobile")),
+    ):
+        _write_row(ws, r, [label, "", ""], _BODY)
+        ws.cell(row=r, column=1).font = _LABEL
+        _link_cell(ws, r, 2, ref)
+        r += 1
+    r += 1
+
+    # everything below is the team's to fill: nothing in the intake form can
+    # supply it
+    manual_blocks = [
+        ("Foreign entity details (filled in by the team)",
+         ["Foreign entity name", "Address", "Email ID", "Contact number"]),
+        ("Foreign entity shareholding pattern",
+         ["Shareholder 1", "Shareholder 2"]),
+        ("Foreign entity bank account details",
+         ["Account number", "SWIFT", "IBAN"]),
+        ("Indian LLP bank account",
+         ["Account number", "IFSC", "Name of the bank"]),
+    ]
+    for title, labels in manual_blocks:
+        _write_row(ws, r, [title, "", ""], _SECTION, _SECTION_FILL)
+        r += 1
+        for label in labels:
+            _write_row(ws, r, [label, "", ""], _BODY)
+            ws.cell(row=r, column=1).font = _LABEL
+            _input_cell(ws, r, 2)
+            r += 1
+        r += 1
+
+    _autosize(ws, {1: 44, 2: 46, 3: 30})
+
+
+def submission_workbook(cfg: dict, link, submission, uploads_by_slot: dict) -> bytes:
+    """One submission as the office's master file: Details, LLP agreement, ODI."""
+    wb = Workbook()
+    details = wb.active
+    details.title = "Details"
+    rows = _details_sheet(details, cfg, link, submission, uploads_by_slot)
+
+    _llp_agreement_sheet(wb.create_sheet("LLP agreement"), cfg, rows)
+    _odi_sheet(wb.create_sheet("ODI sheet"), cfg, rows)
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

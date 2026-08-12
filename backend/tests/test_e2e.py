@@ -7,6 +7,7 @@ Run:  python backend/tests/test_e2e.py
 Exits non-zero if any check fails.
 """
 import asyncio
+import io
 import os
 import sys
 import tempfile
@@ -112,10 +113,14 @@ JPG = (b"\xff\xd8\xff\xe0jpeg", "image/jpeg")
 
 def sample_value(field):
     t = field.get("type")
+    if field.get("numeric"):
+        # lakh-style grouping, as a client would actually type it
+        return "1,00,000"
     if t == "email":
         return "person@example.com"
     if t == "tel":
-        return "9998887777"
+        # leading zero: the export must not turn this into a number
+        return "09998887777"
     if t == "select":
         # skip a leading "— Select —" placeholder: it is blank, so a required
         # select would fail validation
@@ -196,6 +201,41 @@ check("DIN makes fields optional", client.post(f"/f/{l3.token}", data=d, files=r
 l4 = new_link("L4")
 check("no DIN keeps them required", client.post(f"/f/{l4.token}",
       data=valid_data(skip=("partner1__permanent_address",)), files=required_files()).status_code == 400)
+
+print("== master workbook ==")
+from openpyxl import load_workbook  # noqa: E402
+from app.exporting import submission_workbook  # noqa: E402
+
+sub_link = db.query(SubmissionLink).filter(SubmissionLink.token == token).first()
+xlsx = submission_workbook(CFG, sub_link, sub_link.submission,
+                           {u.field_key: u for u in sub_link.submission.uploads})
+wbk = load_workbook(io.BytesIO(xlsx))
+check("three sheets", wbk.sheetnames == ["Details", "LLP agreement", "ODI sheet"])
+check("no Notes column", wbk["Details"]["C1"].value is None)
+
+det = wbk["Details"]
+labels = {det.cell(row=r, column=1).value: r for r in range(1, det.max_row + 1)}
+cap_row = labels["First Partner — Capital Contribution"]
+# a text cell counts as 0 inside SUM, so the capital total and every
+# percentage on the agreement sheet would come out wrong
+check("capital written as a number", isinstance(det.cell(row=cap_row, column=2).value, (int, float)))
+phone_row = labels["LLP Contact Number (different from the ones above)"]
+check("leading zero kept on phone", str(det.cell(row=phone_row, column=2).value).startswith("0"))
+
+agr = wbk["LLP agreement"]
+formulas = [c.value for r in agr.iter_rows() for c in r if isinstance(c.value, str) and c.value.startswith("=")]
+check("agreement pulls from Details", any("Details!B" in f for f in formulas))
+check("agreement totals the capital", any(f.startswith("=SUM(") for f in formulas))
+check("blank source renders blank, not 0",
+      all('=IF(Details!B' in f for f in formulas if "Details!B" in f))
+# every reference must land on a row that exists, or the sheet shows #REF!
+import re as _re
+refs = [int(m) for f in formulas for m in _re.findall(r"Details!B(\d+)", f)]
+check("no reference past the end of Details", refs and max(refs) <= det.max_row)
+check("ODI keeps the team's blanks empty",
+      all(wbk["ODI sheet"].cell(row=r, column=2).value is None
+          for r in range(1, wbk["ODI sheet"].max_row + 1)
+          if wbk["ODI sheet"].cell(row=r, column=1).value in ("SWIFT", "IBAN", "Foreign entity name")))
 
 print("== security headers ==")
 r = client.get("/admin")

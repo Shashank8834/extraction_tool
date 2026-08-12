@@ -30,7 +30,7 @@ def _fill_sources(field: dict) -> list[str]:
     return [src] if isinstance(src, str) else list(src)
 
 
-def _build_section(section_key: str, title: str, raw: dict) -> dict:
+def _build_section(section_key: str, title: str, raw: dict, is_partner: bool = False) -> dict:
     fields = []
     for f in raw.get("fields", []) or []:
         f = dict(f)
@@ -56,6 +56,9 @@ def _build_section(section_key: str, title: str, raw: dict) -> dict:
         "key": section_key,
         "title": title,
         "note": raw.get("note", ""),
+        # exports build a per-partner block (LLP agreement, ODI) and need to
+        # tell a repeated partner section from a one-off one
+        "is_partner": is_partner,
         "fields": fields,
         "uploads": uploads,
     }
@@ -72,7 +75,8 @@ def _normalise(cfg: dict) -> dict:
         (top if s.get("position") == "top" else bottom).append(built)
 
     partner_sections = [
-        _build_section(p["key"], p.get("title", p["key"]), template) for p in partners
+        _build_section(p["key"], p.get("title", p["key"]), template, is_partner=True)
+        for p in partners
     ]
 
     sections = top + partner_sections + bottom

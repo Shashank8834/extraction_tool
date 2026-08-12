@@ -107,11 +107,15 @@ sections:
   - key: capital
     title: "Capital & Sharing"
     note: "How much each partner puts in, and how profits are split between them."
+    # `numeric: true` makes the export write these as numbers rather than text,
+    # so the LLP agreement sheet can total the capital and work out each
+    # partner's share. Never set it on a phone number or an ID — a leading zero
+    # would be lost.
     fields:
-      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true}
-      - {key: partner2_capital, label: "Second Partner — Capital Contribution", type: text, required: true}
-      - {key: partner1_profit,  label: "First Partner — Profit/Loss Share (%)",  type: text, required: true}
-      - {key: partner2_profit,  label: "Second Partner — Profit/Loss Share (%)", type: text, required: true}
+      - {key: partner1_capital, label: "First Partner — Capital Contribution",  type: text, required: true, numeric: true}
+      - {key: partner2_capital, label: "Second Partner — Capital Contribution", type: text, required: true, numeric: true}
+      - {key: partner1_profit,  label: "First Partner — Profit/Loss Share (%)",  type: text, required: true, numeric: true}
+      - {key: partner2_profit,  label: "Second Partner — Profit/Loss Share (%)", type: text, required: true, numeric: true}
 
   - key: office
     title: "Registered Office"
