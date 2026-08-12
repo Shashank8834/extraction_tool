@@ -45,7 +45,7 @@ The link locks itself the moment it is submitted.
 ## 3. The team downloads one master file
 
 In the dashboard the submission has *Download Excel* and *Download documents*
-(a ZIP of every uploaded file). The Excel is the **master file** — four sheets:
+(a ZIP of every uploaded file). The Excel is the **master file** — five sheets:
 
 | Sheet | What it is |
 | --- | --- |
