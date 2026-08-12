@@ -1,9 +1,9 @@
 # Example Caddy config for automatic HTTPS in front of the app.
-# 1. Point your domain's DNS A record at the VPS.
+# 1. Point the subdomain's DNS A record at this server (see DNS.md).
 # 2. Rename to `Caddyfile`, replace the domain, install Caddy, and run it.
 # Caddy fetches and renews Let's Encrypt certs automatically.
 
-intake.yourdomain.com {
+intake.bclworkspace.in {
     encode gzip
     reverse_proxy 127.0.0.1:8000
 }

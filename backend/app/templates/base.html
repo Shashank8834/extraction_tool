@@ -3,13 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Client Intake{% endblock %}</title>
+  <title>{% block title %}Client Intake{% endblock %} — {{ brand.name }}</title>
+  <link rel="icon" href="{{ brand.logo or '/static/bcl-logo.png' }}">
+  <link rel="stylesheet" href="/static/fonts.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brandmark" href="{{ brand.url }}" target="_blank" rel="noopener noreferrer">
+        {% if brand.logo %}
+          <img src="{{ brand.logo }}" alt="{{ brand.name }}" class="brand-logo">
+        {% else %}
+          <span class="brand-wordmark">{{ brand.name }}</span>
+        {% endif %}
+      </a>
+      {% if brand.tagline %}<span class="brand-tagline">{{ brand.tagline }}</span>{% endif %}
+    </div>
+    <div class="header-rule"></div>
+  </header>
+
   <div class="container">
     {% block body %}{% endblock %}
   </div>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span>&copy; {{ brand.name }}{% if brand.tagline %} — {{ brand.tagline }}{% endif %}</span>
+      {% if brand.url %}
+        <a href="{{ brand.url }}" target="_blank" rel="noopener noreferrer">{{ brand.url | replace("https://", "") | replace("http://", "") | replace("/", "") }}</a>
+      {% endif %}
+    </div>
+  </footer>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

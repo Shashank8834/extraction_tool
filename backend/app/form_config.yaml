@@ -33,7 +33,7 @@ description: "Please fill in the details below. Wherever you upload a document, 
 brand:
   name: "BCL India"
   url: "https://bclindia.in/"
-  logo: ""
+  logo: "/static/bcl-logo.png"
   tagline: "Chartered Accountants"
 
 # --- Repeated for every designated partner -------------------------------

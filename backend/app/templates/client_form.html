@@ -35,20 +35,7 @@
 {% endmacro %}
 
 {% block body %}
-  {% set brand = form.brand %}
-  {% if brand.name %}
-    <header class="brandbar">
-      <a class="brandmark" href="{{ brand.url }}" target="_blank" rel="noopener noreferrer">
-        {% if brand.logo %}
-          <img src="{{ brand.logo }}" alt="{{ brand.name }}" class="brand-logo">
-        {% else %}
-          <span class="brand-wordmark">{{ brand.name }}</span>
-        {% endif %}
-      </a>
-      {% if brand.tagline %}<span class="brand-tagline">{{ brand.tagline }}</span>{% endif %}
-    </header>
-  {% endif %}
-
+  {# the logo bar lives in base.html, so every page carries it #}
   <div class="page-head">
     <h1>{{ form.title }}</h1>
     {% if form.description %}<p class="muted">{{ form.description }}</p>{% endif %}

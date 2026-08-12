@@ -82,6 +82,9 @@ docker compose up -d --build
 The app listens on `127.0.0.1:8000`. Put a reverse proxy in front for HTTPS
 (see `Caddyfile.example`).
 
+In production it is served from the company subdomain `intake.bclworkspace.in` —
+see [DNS.md](DNS.md) for the record to request and the cutover steps.
+
 ## Changing the form
 
 Everything about the form lives in `backend/app/form_config.yaml`:
