@@ -274,6 +274,10 @@ async def submit_form(
             val = (form.get(name) or "").strip()
             # A hidden conditional field is stored blank, so a stale answer
             # (Other + text, then switched to Graduate) can't reach the record.
+            # a PAN is upper case on every filing; store it that way rather
+            # than however the client happened to type it
+            if field.get("key") == "pan_number":
+                val = val.upper()
             values[name] = val if _field_visible(field, values) else ""
             if _field_required(field, section, values) and not values[name]:
                 errors[name] = "This field is required."

@@ -81,6 +81,20 @@ RAMESH SHARMA
 check("spaced-out PAN number read", spaced.get("pan_number") == "ABCDE1234F")
 check("spaced-out PAN name read", spaced.get("first_name") == "PRIYA")
 
+# OCR splits the two-column card header freely. Phrase matching let "INCOME TAX"
+# through as the holder's name, which is worse than reading nothing: it fills the
+# form confidently and marks it as read-from-document.
+noisy = parse_pan("""INCOME TAX
+DEPARTMENT
+GOVT. OF
+INDIA
+ABCDE1234F
+ARPITA BHATT
+MANOJ BHATT
+01/01/1990""")
+check("split card header is not read as a name", noisy.get("first_name") == "ARPITA")
+check("split card header is not read as a father", noisy.get("father_first_name") == "MANOJ")
+
 aad = parse_aadhaar("Address:\n12 MG Road, Banjara Hills,\nHyderabad, Telangana - 500034\n2345 6789 0123")
 check("aadhaar present_address", "500034" in (aad.get("present_address") or ""))
 bank = parse_bank_statement("Address: 45 Jubilee Hills,\nHyderabad, Telangana 500033")
@@ -252,6 +266,15 @@ d = valid_data()
 d["partner1__pan_number"] = "1234567890"
 check("malformed PAN rejected",
       client.post(f"/f/{l8.token}", data=d, files=required_files()).status_code == 400)
+l13 = new_link("L13")
+d13 = valid_data()
+d13["partner1__pan_number"] = "abcde1234f"
+r13 = client.post(f"/f/{l13.token}", data=d13, files=required_files())
+db.expire_all()
+sub13 = db.query(SubmissionLink).filter(SubmissionLink.token == l13.token).first().submission
+check("PAN stored upper case", r13.status_code == 200
+      and sub13.form_data.get("partner1__pan_number") == "ABCDE1234F")
+
 l9 = new_link("L9")
 d = valid_data()
 d["partner1__mobile"] = "+91 99988 87777"

@@ -72,8 +72,12 @@ partner_template:
     # Decides S/o, D/o, W/o or H/o on Form 9, the subscriber sheet and the RBI
     # declaration. Without it every partner is filed as "S/o", which is wrong
     # for half of them — hence the explicit question rather than a guess.
+    # The blank first option is deliberate: with "Son" first the browser
+    # preselects it, the required check passes, and a woman who never looked at
+    # the question is filed as "S/o" — the exact defect this field exists to
+    # prevent. Blank forces a real answer.
     - {key: relation,          label: "You are the … of the person named above", type: select, required: true,
-       options: ["Son", "Daughter", "Wife", "Husband"]}
+       options: ["", "Son", "Daughter", "Wife", "Husband"]}
     - {key: professional_membership, label: "Membership of ICSI / ICAI / ICWAI, if any", type: text, required: false,
        placeholder: "Membership number, or leave blank"}
     - {key: present_address,   label: "Present Address",                     type: textarea, required: true,  fill_from: aadhaar}

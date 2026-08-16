@@ -34,14 +34,17 @@ def _split_name(full: str) -> tuple[str, str]:
 
 # --- PAN ---------------------------------------------------------------------
 
-# Lines printed on every PAN card. Anything left after these is a person's name.
-_PAN_BOILERPLATE = (
-    "income tax department", "govt. of india", "govt of india",
-    "government of india", "permanent account number", "account number card",
-    "signature", "date of birth", "आयकर", "भारत", "स्थायी", "हस्ताक्षर",
-    "e-pan", "epan", "this is an electronically", "qr code",
-)
-_PAN_LABEL_RE = re.compile(r"\b(name|father|dob|birth)\b", re.IGNORECASE)
+# Words printed on the card itself. Matched per word rather than as whole
+# phrases: OCR splits the two-column header freely, so "INCOME TAX DEPARTMENT"
+# arrives as "INCOME TAX" / "DEPARTMENT" often enough that phrase matching let
+# "INCOME TAX" through as somebody's name.
+_PAN_STOPWORDS = {
+    "income", "tax", "department", "govt", "govt.", "government", "india",
+    "permanent", "account", "number", "card", "signature", "name", "father",
+    "fathers", "father's", "dob", "birth", "date", "epan", "e-pan", "qr",
+    "code", "electronically", "issued", "digitally", "signed", "authority",
+    "आयकर", "विभाग", "भारत", "सरकार", "स्थायी", "हस्ताक्षर", "नाम", "पिता",
+}
 
 
 def _pan_text_lines(text: str) -> list[str]:
@@ -56,8 +59,11 @@ def _pan_text_lines(text: str) -> list[str]:
         line = re.sub(r"\s+", " ", raw).strip(" \t|:-")
         if len(line) < 3 or len(line.split()) > 6:
             continue
-        low = line.lower()
-        if any(b in low for b in _PAN_BOILERPLATE) or _PAN_LABEL_RE.search(low):
+        # one card word anywhere in the line disqualifies it: a person is not
+        # called "Income Tax" and the cost of guessing wrong is a wrong name on
+        # a filing, so err towards leaving the field blank for the client
+        words = [w.strip(".,:;/|").lower() for w in line.split()]
+        if any(w in _PAN_STOPWORDS for w in words):
             continue
         if PAN_RE.search(line.replace(" ", "")) or DOB_RE.search(line):
             continue
