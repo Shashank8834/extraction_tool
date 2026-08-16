@@ -34,11 +34,51 @@ def _split_name(full: str) -> tuple[str, str]:
 
 # --- PAN ---------------------------------------------------------------------
 
+# Lines printed on every PAN card. Anything left after these is a person's name.
+_PAN_BOILERPLATE = (
+    "income tax department", "govt. of india", "govt of india",
+    "government of india", "permanent account number", "account number card",
+    "signature", "date of birth", "आयकर", "भारत", "स्थायी", "हस्ताक्षर",
+    "e-pan", "epan", "this is an electronically", "qr code",
+)
+_PAN_LABEL_RE = re.compile(r"\b(name|father|dob|birth)\b", re.IGNORECASE)
+
+
+def _pan_text_lines(text: str) -> list[str]:
+    """Candidate name lines from a PAN card, in printed order.
+
+    Current e-PAN cards print the holder's name and the father's name with no
+    label at all — just the values, one per line. Dropping the fixed card text
+    and anything that is a number leaves those two lines.
+    """
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw).strip(" \t|:-")
+        if len(line) < 3 or len(line.split()) > 6:
+            continue
+        low = line.lower()
+        if any(b in low for b in _PAN_BOILERPLATE) or _PAN_LABEL_RE.search(low):
+            continue
+        if PAN_RE.search(line.replace(" ", "")) or DOB_RE.search(line):
+            continue
+        # a name is letters and spaces; reject lines that are mostly punctuation
+        # or digits, which is what OCR noise looks like
+        letters = sum(c.isalpha() or c.isspace() for c in line)
+        if letters < len(line) * 0.85 or not any(c.isalpha() for c in line):
+            continue
+        out.append(line)
+    return out
+
+
 def parse_pan(text: str) -> dict:
     up = text.upper()
     result: dict = {}
 
-    m = PAN_RE.search(up.replace(" ", ""))
+    # Look in the text as printed first. Only then in a space-stripped copy, for
+    # cards where OCR spaces the characters out ("ABCDE 1234 F") — and there
+    # without \b, because stripping spaces glues the number to the word before
+    # it and the boundary never matches.
+    m = PAN_RE.search(up) or re.search(r"([A-Z]{5}[0-9]{4}[A-Z])", up.replace(" ", ""))
     if m:
         result["pan_number"] = m.group(1)
 
@@ -53,12 +93,28 @@ def parse_pan(text: str) -> dict:
         if last:
             result["last_name"] = last
 
-    father = _value_for(text, {"fathers name", "father name"})
+    father = _value_for(text, {"fathers name", "father name", "father's name",
+                               "fathers/husbands name", "father / husband name"})
     if father:
         first, last = _split_name(father)
         result["father_first_name"] = first
         if last:
             result["father_last_name"] = last
+
+    # Label-less card: the name and the father's name are simply the first two
+    # lines left once the card's fixed text and the numbers are removed.
+    if "first_name" not in result or "father_first_name" not in result:
+        lines = _pan_text_lines(text)
+        if "first_name" not in result and lines:
+            first, last = _split_name(lines[0])
+            result["first_name"] = first
+            if last:
+                result["last_name"] = last
+        if "father_first_name" not in result and len(lines) > 1:
+            first, last = _split_name(lines[1])
+            result["father_first_name"] = first
+            if last:
+                result["father_last_name"] = last
 
     return result
 

@@ -57,6 +57,30 @@ check("pan number", pan.get("pan_number") == "ABCDE1234F")
 check("pan first/last split", pan.get("first_name") == "RAHUL" and pan.get("last_name") == "KUMAR SHARMA")
 check("pan father split", pan.get("father_first_name") == "SURESH")
 check("pan dob", pan.get("dob") == "15/08/1990")
+# Current e-PAN cards print no "Name"/"Father's Name" labels at all — just the
+# values in order. The label-only parser returned nothing on these, which is
+# what "Couldn't auto-read this one" meant to the client.
+epan = parse_pan("""INCOME TAX DEPARTMENT          GOVT. OF INDIA
+Permanent Account Number Card
+ABCDE1234F
+ARPITA BHATT
+MANOJ KUMAR BHATT
+01/01/1990
+Signature""")
+check("e-PAN without labels: number", epan.get("pan_number") == "ABCDE1234F")
+check("e-PAN without labels: name", epan.get("first_name") == "ARPITA" and epan.get("last_name") == "BHATT")
+check("e-PAN without labels: father", epan.get("father_first_name") == "MANOJ")
+check("e-PAN without labels: dob", epan.get("dob") == "01/01/1990")
+# OCR often spaces the characters out; stripping spaces glues the number to the
+# preceding word, so a word-boundary match finds nothing
+spaced = parse_pan("""Permanent Account Number
+A B C D E 1 2 3 4 F
+PRIYA SHARMA
+RAMESH SHARMA
+02/03/1988""")
+check("spaced-out PAN number read", spaced.get("pan_number") == "ABCDE1234F")
+check("spaced-out PAN name read", spaced.get("first_name") == "PRIYA")
+
 aad = parse_aadhaar("Address:\n12 MG Road, Banjara Hills,\nHyderabad, Telangana - 500034\n2345 6789 0123")
 check("aadhaar present_address", "500034" in (aad.get("present_address") or ""))
 bank = parse_bank_statement("Address: 45 Jubilee Hills,\nHyderabad, Telangana 500033")
