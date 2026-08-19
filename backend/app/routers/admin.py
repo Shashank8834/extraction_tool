@@ -115,8 +115,11 @@ def delete_link(link_id: str, request: Request, db: Session = Depends(get_db)):
     if link.submission is not None:
         for upload in link.submission.uploads:
             delete_file(upload.stored_filename)
+    # Documents chosen but never submitted are blobs on disk too.
+    for staged in link.staged_uploads:
+        delete_file(staged.stored_filename)
 
-    db.delete(link)  # cascades to the submission and its upload rows
+    db.delete(link)  # cascades to the submission, its uploads and any staged files
     db.commit()
     return RedirectResponse("/admin", status_code=303)
 

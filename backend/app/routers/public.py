@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -8,15 +8,20 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..config_loader import get_form_config
 from ..database import SessionLocal, get_db
-from ..models import Submission, SubmissionLink, Upload
+from ..models import StagedUpload, Submission, SubmissionLink, Upload
 from ..ocr.extractor import extract, peek_cached
-from ..security import is_accepted_type
-from ..storage import load_decrypted, save_encrypted
+from ..security import is_accepted_type, sniff_content_type
+from ..storage import delete_file, load_decrypted, save_encrypted
 from ..templating import templates
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# How long a chosen-but-not-submitted document is kept. Long enough that a
+# client can be interrupted mid-form and come back to it, short enough that an
+# abandoned link does not leave documents lying about indefinitely.
+_STAGED_TTL = timedelta(hours=48)
 
 
 def _max_file_bytes() -> int:
@@ -36,6 +41,60 @@ def _link_state(link: SubmissionLink | None) -> str:
     if link is None:
         return "invalid"
     return "open" if link.is_open else link.effective_status
+
+
+# --- documents held between attempts -----------------------------------------
+
+def _staged_by_slot(db: Session, link: SubmissionLink) -> dict[str, StagedUpload]:
+    """Documents already chosen against this link, keyed by upload slot."""
+    rows = db.query(StagedUpload).filter(StagedUpload.link_id == link.id).all()
+    return {row.field_key: row for row in rows}
+
+
+def _drop_staged(db: Session, row: StagedUpload, keep_blob: bool = False) -> None:
+    """Forget a staged document. `keep_blob` when a real Upload has taken the
+    blob over — deleting it then would delete the submitted document."""
+    if not keep_blob:
+        delete_file(row.stored_filename)
+    db.delete(row)
+
+
+def _stage_upload(
+    db: Session, link: SubmissionLink, slot: str, filename: str,
+    content_type: str, data: bytes,
+) -> StagedUpload:
+    """Hold this document against the link so a failed submit cannot lose it.
+    A second document for the same slot replaces the first."""
+    existing = db.query(StagedUpload).filter(
+        StagedUpload.link_id == link.id, StagedUpload.field_key == slot
+    ).all()
+    for row in existing:
+        _drop_staged(db, row)
+
+    row = StagedUpload(
+        link_id=link.id,
+        field_key=slot,
+        original_filename=filename or "document",
+        stored_filename=save_encrypted(data),
+        content_type=content_type,
+        size_bytes=len(data),
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def _prune_staged(db: Session) -> None:
+    """Clear out documents staged against links nobody came back to."""
+    cutoff = datetime.utcnow() - _STAGED_TTL
+    for row in db.query(StagedUpload).filter(StagedUpload.created_at < cutoff).all():
+        _drop_staged(db, row)
+    db.commit()
+
+
+def _staged_names(db: Session, link: SubmissionLink) -> dict[str, str]:
+    """{slot: filename} for the form to show what is already attached."""
+    return {slot: row.original_filename for slot, row in _staged_by_slot(db, link).items()}
 
 
 def _section_has_din(section: dict, values: dict) -> bool:
@@ -104,7 +163,7 @@ def _duplicate_upload_errors(cfg: dict, upload_files: list) -> dict:
 
     seen: dict[str, tuple[str, str]] = {}  # digest -> (section, slot label)
     errors: dict = {}
-    for slot_name, meta, _filename, _ctype, data in upload_files:
+    for slot_name, meta, _filename, _ctype, data, _stored in upload_files:
         if meta.get("extractor") not in identity:
             continue
         digest = sha256(data).hexdigest()
@@ -154,9 +213,11 @@ def show_form(token: str, request: Request, db: Session = Depends(get_db)):
             {"request": request, "state": state},
             status_code=404 if state == "invalid" else 410,
         )
+    _prune_staged(db)
     return templates.TemplateResponse(
         "client_form.html",
-        {"request": request, "form": get_form_config(), "token": token, "errors": None, "values": {}},
+        {"request": request, "form": get_form_config(), "token": token, "errors": None,
+         "values": {}, "staged": _staged_names(db, link)},
     )
 
 
@@ -171,7 +232,11 @@ async def extract_document(
     db: Session = Depends(get_db),
 ):
     """OCR a single uploaded document and return the field values it fills, keyed
-    by input name, so the client's browser can pre-fill them."""
+    by input name, so the client's browser can pre-fill them.
+
+    The document is also kept against the link, so it survives a submit that
+    comes back with a validation error.
+    """
     link = _get_link(db, token)
     if _link_state(link) != "open":
         return JSONResponse({"ok": False, "error": "This link is no longer active."}, status_code=410)
@@ -181,9 +246,6 @@ async def extract_document(
     if meta is None:
         return JSONResponse({"ok": False, "error": "Unknown upload."}, status_code=400)
 
-    if not is_accepted_type(file.content_type, meta["accept"]):
-        return JSONResponse({"ok": False, "error": "Unsupported file type."}, status_code=415)
-
     data = await file.read()
     if len(data) > _max_file_bytes():
         return JSONResponse(
@@ -192,7 +254,18 @@ async def extract_document(
     if not data:
         return JSONResponse({"ok": False, "error": "Empty file."}, status_code=400)
 
-    raw_text, extracted = extract(meta["extractor"], data, file.content_type)
+    # The bytes decide the type, not the browser's guess — see sniff_content_type.
+    content_type = sniff_content_type(data, file.content_type)
+    if not is_accepted_type(content_type, meta["accept"]):
+        return JSONResponse(
+            {"ok": False, "error": "This file is not an image or a PDF. Please upload a "
+                                   "photo or a scan of the document."},
+            status_code=415,
+        )
+
+    staged = _stage_upload(db, link, slot, file.filename, content_type, data)
+
+    raw_text, extracted = extract(meta["extractor"], data, content_type)
 
     # Map canonical extractor keys -> fully-qualified field names this slot fills.
     prefix = meta["section"] + "__"
@@ -203,7 +276,31 @@ async def extract_document(
         if name in fills and value:
             fields[name] = value
 
-    return JSONResponse({"ok": True, "fields": fields, "found": len(fields), "had_text": bool(raw_text)})
+    return JSONResponse({
+        "ok": True, "fields": fields, "found": len(fields), "had_text": bool(raw_text),
+        "saved": staged.original_filename,
+    })
+
+
+@router.post("/f/{token}/unstage")
+async def unstage_document(
+    token: str,
+    slot: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Forget the document held for one slot — the client cleared the field or
+    wants to attach a different one. Without this there is no way to take back
+    a document uploaded against the wrong partner."""
+    link = _get_link(db, token)
+    if _link_state(link) != "open":
+        return JSONResponse({"ok": False, "error": "This link is no longer active."}, status_code=410)
+
+    for row in db.query(StagedUpload).filter(
+        StagedUpload.link_id == link.id, StagedUpload.field_key == slot
+    ).all():
+        _drop_staged(db, row)
+    db.commit()
+    return JSONResponse({"ok": True})
 
 
 # --- POST submit -------------------------------------------------------------
@@ -259,7 +356,7 @@ async def submit_form(
             "client_form.html",
             {"request": request, "form": cfg, "token": token,
              "errors": {"__all__": f"Upload too large (max {settings.max_upload_mb} MB per file)."},
-             "values": {}},
+             "values": {}, "staged": _staged_names(db, link)},
             status_code=413,
         )
 
@@ -287,19 +384,35 @@ async def submit_form(
                     errors[name] = problem
 
     # --- uploads ---
-    upload_files = []  # (slot_name, meta, filename, content_type, bytes)
+    # (slot_name, meta, filename, content_type, bytes, already_stored_blob|None)
+    upload_files = []
+    staged = _staged_by_slot(db, link)
+
     for slot_name, meta in cfg["slots"].items():
         file = form.get(slot_name)
         has_file = file is not None and getattr(file, "filename", "")
-        # find the upload cfg to know if required
-        required = _upload_required(cfg, slot_name)
+        held = staged.get(slot_name)
+
         if not has_file:
-            if required:
+            # Nothing attached this time round, but the document chosen earlier
+            # is still here — that is the whole point of staging it.
+            if held is not None:
+                try:
+                    data = load_decrypted(held.stored_filename)
+                except Exception as exc:  # noqa: BLE001 - a lost blob must not 500
+                    log.warning("Staged blob for %s unreadable: %r", slot_name, exc)
+                    _drop_staged(db, held)
+                    db.commit()
+                    staged.pop(slot_name, None)
+                    if _upload_required(cfg, slot_name):
+                        errors[slot_name] = "Please attach this document again."
+                    continue
+                upload_files.append((slot_name, meta, held.original_filename,
+                                     held.content_type, data, held.stored_filename))
+            elif _upload_required(cfg, slot_name):
                 errors[slot_name] = "Please upload this document."
             continue
-        if not is_accepted_type(file.content_type, meta["accept"]):
-            errors[slot_name] = "Unsupported file type. Please upload an image or PDF."
-            continue
+
         data = await file.read()
         if len(data) > _max_file_bytes():
             errors[slot_name] = f"File is too large (max {settings.max_upload_mb} MB)."
@@ -307,14 +420,29 @@ async def submit_form(
         if not data:
             errors[slot_name] = "Uploaded file is empty."
             continue
-        upload_files.append((slot_name, meta, file.filename, file.content_type, data))
+        content_type = sniff_content_type(data, file.content_type)
+        if not is_accepted_type(content_type, meta["accept"]):
+            errors[slot_name] = ("This file is not an image or a PDF. Please upload a "
+                                 "photo or a scan of the document.")
+            continue
+        # A freshly attached file wins over any document held for this slot;
+        # the one it replaces is cleared out after the submission is saved.
+        upload_files.append((slot_name, meta, file.filename, content_type, data, None))
 
     errors.update(_duplicate_upload_errors(cfg, upload_files))
 
     if errors:
+        # Whatever the client attached this time is staged too, so the next
+        # attempt starts with every document in place rather than none of them.
+        # A document that was itself refused is not held: keeping it would show
+        # it as attached and fail the same way on every further attempt.
+        for slot_name, _meta, filename, content_type, data, stored in upload_files:
+            if stored is None and slot_name not in errors:
+                _stage_upload(db, link, slot_name, filename, content_type, data)
         return templates.TemplateResponse(
             "client_form.html",
-            {"request": request, "form": cfg, "token": token, "errors": errors, "values": values},
+            {"request": request, "form": cfg, "token": token, "errors": errors,
+             "values": values, "staged": _staged_names(db, link)},
             status_code=400,
         )
 
@@ -328,10 +456,12 @@ async def submit_form(
     db.flush()
 
     pending: list[tuple[str, str]] = []  # (upload_id, extractor) still to be read
-    for slot_name, meta, filename, content_type, data in upload_files:
+    for slot_name, meta, filename, content_type, data, staged_blob in upload_files:
         # Usually already read during autofill, in which case this is free.
         cached = peek_cached(meta["extractor"], data)
-        stored = save_encrypted(data)
+        # A staged document is already encrypted on disk; the submission takes
+        # the blob over rather than writing a second copy of it.
+        stored = staged_blob or save_encrypted(data)
         upload = Upload(
             submission_id=submission.id,
             field_key=slot_name,
@@ -347,6 +477,12 @@ async def submit_form(
         db.flush()  # assign the id the background pass needs
         if cached is None:
             pending.append((upload.id, meta["extractor"]))
+
+    # The staging area has done its job. A blob adopted above stays on disk
+    # under its Upload; the rest — documents a later attachment replaced — go.
+    adopted = {stored for _s, _m, _f, _c, _d, stored in upload_files if stored}
+    for row in staged.values():
+        _drop_staged(db, row, keep_blob=row.stored_filename in adopted)
 
     link.status = "completed"
     link.completed_at = datetime.utcnow()

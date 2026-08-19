@@ -300,6 +300,108 @@ files["partner1__bank_statement"] = files["partner1__aadhaar"]
 check("same file within one partner allowed",
       client.post(f"/f/{l11.token}", data=valid_data(), files=files).status_code == 200)
 
+print("== documents survive a failed submit ==")
+from app.models import StagedUpload  # noqa: E402
+
+PDF = (b"%PDF-1.4 fake", "application/pdf")
+
+
+def staged_count(link):
+    db.expire_all()
+    return db.query(StagedUpload).filter(StagedUpload.link_id == link.id).count()
+
+
+# The reported bug: one missing field, and every attached document was gone.
+l18 = new_link("L18")
+r18a = client.post(f"/f/{l18.token}", data=valid_data(skip=("partner1__first_name",)),
+                   files=required_files())
+check("incomplete submit still 400", r18a.status_code == 400)
+check("documents held after the error", staged_count(l18) == len(required_files()))
+check("the form says they are attached", "is attached" in r18a.text and "pan.jpg" in r18a.text)
+# ...and the second attempt sends no files at all, as a browser does.
+r18b = client.post(f"/f/{l18.token}", data=valid_data())
+check("re-submit needs no re-attaching", r18b.status_code == 200 and "Thank you" in r18b.text)
+db.expire_all()
+sub18 = db.query(SubmissionLink).filter(SubmissionLink.token == l18.token).first().submission
+check("held documents became the uploads", len(sub18.uploads) == len(required_files()))
+check("held document keeps its filename",
+      {u.field_key: u for u in sub18.uploads}["partner1__pan"].original_filename == "pan.jpg")
+check("staging cleared after submit", staged_count(l18) == 0)
+
+# A document chosen for autofill is held even if the client never gets as far
+# as pressing Submit with it attached.
+l19 = new_link("L19")
+client.post(f"/f/{l19.token}/extract", data={"slot": "partner1__pan"},
+            files={"file": ("autofill-pan.jpg", *JPG)})
+check("autofill upload is held", staged_count(l19) == 1)
+files19 = {k: v for k, v in required_files().items() if k != "partner1__pan"}
+check("submit completes with the held document",
+      client.post(f"/f/{l19.token}", data=valid_data(), files=files19).status_code == 200)
+
+# A fresh attachment replaces the held one rather than being ignored.
+l20 = new_link("L20")
+client.post(f"/f/{l20.token}/extract", data={"slot": "partner1__pan"},
+            files={"file": ("old.jpg", b"\xff\xd8\xff\xe0old", "image/jpeg")})
+files20 = required_files()
+files20["partner1__pan"] = ("new.jpg", b"\xff\xd8\xff\xe0new", "image/jpeg")
+client.post(f"/f/{l20.token}", data=valid_data(), files=files20)
+db.expire_all()
+sub20 = db.query(SubmissionLink).filter(SubmissionLink.token == l20.token).first().submission
+check("a re-attached document replaces the held one",
+      {u.field_key: u for u in sub20.uploads}["partner1__pan"].original_filename == "new.jpg")
+
+# Removing one: the only way back once a document is held server-side.
+l21 = new_link("L21")
+client.post(f"/f/{l21.token}/extract", data={"slot": "partner1__pan"},
+            files={"file": ("wrong.jpg", *JPG)})
+check("unstage ok", client.post(f"/f/{l21.token}/unstage",
+                                data={"slot": "partner1__pan"}).status_code == 200)
+check("removed document is gone", staged_count(l21) == 0)
+check("and it is required again",
+      client.post(f"/f/{l21.token}", data=valid_data(),
+                  files={k: v for k, v in required_files().items()
+                         if k != "partner1__pan"}).status_code == 400)
+
+# A refused document is not held, or the client would see it as attached and
+# hit the same refusal on every further attempt.
+l23 = new_link("L23")
+files23 = required_files()
+files23["partner2__aadhaar"] = files23["partner1__aadhaar"]
+r23 = client.post(f"/f/{l23.token}", data=valid_data(), files=files23)
+check("shared identity document still refused", r23.status_code == 400)
+db.expire_all()
+held23 = {s.field_key for s in db.query(StagedUpload).filter(StagedUpload.link_id == l23.id)}
+check("the refused document is not held", "partner2__aadhaar" not in held23)
+check("the documents that were fine are held", "partner1__aadhaar" in held23)
+
+print("== file types are read from the bytes ==")
+from app.security import sniff_content_type  # noqa: E402
+
+check("pdf sniffed", sniff_content_type(b"%PDF-1.7 ...", "application/octet-stream") == "application/pdf")
+check("jpeg sniffed", sniff_content_type(b"\xff\xd8\xff\xe0\x00", "") == "image/jpeg")
+check("png sniffed", sniff_content_type(b"\x89PNG\r\n\x1a\n", None) == "image/png")
+check("heic sniffed", sniff_content_type(b"\x00\x00\x00\x18ftypheic", "application/octet-stream")
+      == "image/heic")
+check("declared type kept when bytes are unfamiliar",
+      sniff_content_type(b"\x00\x01\x02\x03", "image/tiff") == "image/tiff")
+check("a docx is named for what it is",
+      sniff_content_type(b"PK\x03\x04zzz", "application/octet-stream") == "application/zip")
+
+# The phone that sends a PDF as application/octet-stream used to be told its
+# document was the wrong type; the bytes say otherwise.
+l22 = new_link("L22")
+check("octet-stream PDF accepted",
+      client.post(f"/f/{l22.token}/extract", data={"slot": "partner1__pan"},
+                  files={"file": ("scan.pdf", PDF[0], "application/octet-stream")}
+                  ).status_code == 200)
+check("a Word file is still refused",
+      client.post(f"/f/{l22.token}/extract", data={"slot": "partner1__aadhaar"},
+                  files={"file": ("cv.docx", b"PK\x03\x04zzz", "application/octet-stream")}
+                  ).status_code == 415)
+check("an image mislabelled as html is accepted on its bytes",
+      client.post(f"/f/{l22.token}/extract", data={"slot": "partner1__aadhaar"},
+                  files={"file": ("scan", JPG[0], "text/html")}).status_code == 200)
+
 print("== master workbook ==")
 from openpyxl import load_workbook  # noqa: E402
 from app.exporting import submission_workbook  # noqa: E402

@@ -63,16 +63,17 @@
   {% if errors %}
     <div class="alert error">
       {{ errors.get("__all__", "Please fix the highlighted fields below.") }}
-      {# A browser will not re-attach files for us, so anything the client
-         chose before the error is gone from the form. Saying so beats them
-         pressing Submit again and wondering why it keeps failing. #}
-      <p class="alert-sub">Your typed answers have been kept, but the documents
-        need to be attached again before you submit.</p>
+      {# The documents are held on the server between attempts, so the client
+         only has to fix the fields — telling them so stops them re-uploading
+         everything out of doubt. #}
+      <p class="alert-sub">Your answers and the documents you already uploaded
+        have been kept — just fix the highlighted fields and submit again.</p>
     </div>
   {% endif %}
 
   <form id="intake-form" method="post" action="/f/{{ token }}"
-        enctype="multipart/form-data" data-extract-url="/f/{{ token }}/extract" novalidate>
+        enctype="multipart/form-data" data-extract-url="/f/{{ token }}/extract"
+        data-unstage-url="/f/{{ token }}/unstage" novalidate>
 
     {% for section in form.sections %}
       <section class="card section">
@@ -89,6 +90,17 @@
                 <input type="file" id="{{ up.name }}" name="{{ up.name }}"
                        accept="{{ up.accept }}" data-slot="{{ up.name }}">
                 {% if up.get("hint") %}<div class="help">{{ up.hint }}</div>{% endif %}
+                {# What the server is already holding for this slot. The file
+                   input cannot show it — a browser will not let us put a file
+                   back into one — so it is said in words instead, with a way
+                   to take it back if it was the wrong document. #}
+                <div class="upload-held" data-held="{{ up.name }}"
+                     {% if not staged or not staged.get(up.name) %}hidden{% endif %}>
+                  <span class="upload-held-name" data-held-name="{{ up.name }}"
+                    >{{ staged.get(up.name, "") if staged else "" }}</span>
+                  is attached — no need to upload it again.
+                  <button type="button" class="linkish" data-remove="{{ up.name }}">Remove</button>
+                </div>
                 <div class="upload-status" data-status="{{ up.name }}"></div>
                 {% if errors and errors.get(up.name) %}
                   <div class="field-error">{{ errors[up.name] }}</div>

@@ -58,6 +58,32 @@ function setupAutofill() {
   var form = document.getElementById("intake-form");
   if (!form) return;
   var extractUrl = form.getAttribute("data-extract-url");
+  var unstageUrl = form.getAttribute("data-unstage-url");
+
+  // "Remove" on a document the server is holding, for a file attached to the
+  // wrong slot. Clearing the file input alone would not do it: the server keeps
+  // the document precisely so that an empty input means "unchanged".
+  form.querySelectorAll("button[data-remove]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var slot = button.getAttribute("data-remove");
+      var fd = new FormData();
+      fd.append("slot", slot);
+      button.disabled = true;
+      fetch(unstageUrl, { method: "POST", body: fd })
+        .then(function (r) {
+          if (!r.ok) throw new Error("unstage failed");
+          var input = document.getElementById(slot);
+          if (input) input.value = "";
+          showHeld(slot, null);
+          setStatus(document.querySelector('[data-status="' + slot + '"]'), "", "");
+        })
+        .catch(function () {
+          setStatus(document.querySelector('[data-status="' + slot + '"]'), "warn",
+            "Could not remove it — please try again.");
+        })
+        .then(function () { button.disabled = false; });
+    });
+  });
 
   form.querySelectorAll("input[type=file][data-slot]").forEach(function (input) {
     input.addEventListener("change", function () {
@@ -79,6 +105,8 @@ function setupAutofill() {
             setStatus(status, "warn", (res.body && res.body.error) || "Could not read this file.");
             return;
           }
+          // Saved server-side now, so a validation error will not lose it.
+          showHeld(slot, res.body.saved);
           var r = fillFields(slot, res.body.fields || {});
           if (r.filled > 0) {
             setStatus(status, "ok",
@@ -140,6 +168,19 @@ function setupDinToggle() {
     din.addEventListener("input", apply);
     apply();
   });
+}
+
+// Show (or hide) the "… is attached" line for a slot.
+function showHeld(slot, filename) {
+  var held = document.querySelector('[data-held="' + cssEscape(slot) + '"]');
+  if (!held) return;
+  if (filename) {
+    var name = document.querySelector('[data-held-name="' + cssEscape(slot) + '"]');
+    if (name) name.textContent = filename;
+    held.hidden = false;
+  } else {
+    held.hidden = true;
+  }
 }
 
 // --- helpers ----------------------------------------------------------------

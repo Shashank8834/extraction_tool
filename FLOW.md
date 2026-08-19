@@ -40,6 +40,11 @@ The form refuses data that would be filed wrongly:
   used as another's bank statement would otherwise copy the first partner's
   address onto the second, and it would look perfectly correct on the filing
 
+Each document is saved the moment it is chosen, so a submit that comes back with
+a missing field no longer empties the uploads — the form says which documents it
+is already holding, and the client only fixes the fields and submits again. A
+document attached to the wrong slot is taken back with *Remove* next to it.
+
 The link locks itself the moment it is submitted.
 
 ## 3. The team downloads one master file

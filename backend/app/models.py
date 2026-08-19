@@ -31,6 +31,9 @@ class SubmissionLink(Base):
     submission = relationship(
         "Submission", back_populates="link", uselist=False, cascade="all, delete-orphan"
     )
+    staged_uploads = relationship(
+        "StagedUpload", back_populates="link", cascade="all, delete-orphan"
+    )
 
     @property
     def effective_status(self) -> str:
@@ -63,6 +66,32 @@ class Submission(Base):
     uploads = relationship(
         "Upload", back_populates="submission", cascade="all, delete-orphan"
     )
+
+
+class StagedUpload(Base):
+    """A document the client has chosen but not yet submitted.
+
+    A browser will not re-attach a file for us, so every failed submit used to
+    throw away every document the client had picked — one missing field and
+    they started the uploads again from nothing. Each document is already sent
+    to the server the moment it is chosen, for the autofill, so it is kept here
+    against the link and the slot it was chosen for. A re-submit then needs no
+    re-attaching, and the blob is adopted as-is when the form finally goes
+    through.
+    """
+
+    __tablename__ = "staged_uploads"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    link_id = Column(String, ForeignKey("submission_links.id"), nullable=False, index=True)
+    field_key = Column(String, nullable=False)  # the upload slot it was chosen for
+    original_filename = Column(String, nullable=False)
+    stored_filename = Column(String, nullable=False)  # encrypted blob on disk
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    link = relationship("SubmissionLink", back_populates="staged_uploads")
 
 
 class Upload(Base):

@@ -377,6 +377,30 @@ details[open] summary { margin-bottom: 10px; }
 .upload-status.ok { color: var(--purple-dark); font-weight: 600; }
 .upload-status.warn { color: var(--magenta); font-style: italic; }
 
+/* a document the server is holding for this slot between submit attempts */
+.upload-held {
+  font-size: 0.82rem;
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--purple-soft);
+  color: var(--purple-dark);
+}
+.upload-held[hidden] { display: none; }
+.upload-held::before { content: "✓ "; font-weight: 700; }
+.upload-held-name { font-weight: 600; word-break: break-all; }
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-left: 4px;
+  font: inherit;
+  color: var(--magenta);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linkish[disabled] { opacity: 0.5; cursor: default; }
+
 @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 
 /* help + autofill hints */
